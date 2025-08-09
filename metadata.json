@@ -1,0 +1,9 @@
+{
+  "name": "The Astrian Key °3 ⅓",
+  "description": "An interactive system for multi-modal consciousness mapping and unorthodox textual cartography of the Tanakh.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "prompt": ""
+}
