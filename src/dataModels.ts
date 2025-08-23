@@ -18,7 +18,7 @@ export interface HebrewLetterNode {
 export class HebrewAlphabetNetwork {
   private nodes: Map<string, HebrewLetterNode>;
 
-  constructor() {
+  constructor(gematriaData: Map<string, number>) {
     this.nodes = new Map();
   }
 
@@ -67,10 +67,10 @@ export class HebrewAlphabetNetwork {
     allLetters.forEach(letter => {
       if (!this.nodes.has(letter)) {
         // Add a placeholder node - you'll need to add actual data later
-        // For now, we'll add a placeholder for gematria as 0, which needs to be updated with real data.
+        const gematria = this.gematriaData.get(letter) || 0; // Get gematria from provided data
         this.addNode({
           letter,
-          gematria: 0, // Placeholder, needs to be updated with actual gematria
+          gematria: gematria,
           phonetic: '', // Placeholder
           spelling: [] });
       }
@@ -89,11 +89,11 @@ export class HebrewAlphabetNetwork {
   }
 
   /**
- * Performs a Breadth-First Search (BFS) starting from a given letter.
- * @param startLetter The letter to start the BFS from.
- * @param callback A function to call for each visited node.
- */
-  bfs(startLetter: string, callback: (node: HebrewLetterNode) => void): void {
+   * Performs a Breadth-First Search (BFS) starting from a given letter.
+   * @param startLetter The letter to start the BFS from.
+   * @param callback A function to call for each visited node.
+   */
+  breadthFirstSearch(startLetter: string, callback: (node: HebrewLetterNode) => void): void {
     const startNode = this.getNode(startLetter);
     if (!startNode) {
       return;
@@ -118,6 +118,7 @@ export class HebrewAlphabetNetwork {
       }
     }
   }
+
   /**
    * Performs a Depth-First Search (DFS) starting from a given letter.
    * @param startLetter The letter to start the DFS from.
@@ -266,8 +267,83 @@ export class HebrewAlphabetNetwork {
   getAllIslandNames(): string[] {
     return ["Primary Chain", "Aleph-Pey Loop", "Resh-Shin Island", "Samekh-Kaf Island", "Isolated Letters"];
   }
-}
 
+  /**
+   * Searches the network to find the Aleph-Pey loop (א -> פ -> א).
+   * @returns An array of string arrays, where each inner array represents a path in the loop.
+   */
+  findAlephPeyLoop(): string[][] {
+    const loops: string[][] = [];
+    const alephNode = this.getNode('א');
+    const peyNode = this.getNode('פ');
+
+    if (alephNode && peyNode) {
+      // Check for א -> פ
+      if (alephNode.spelling.includes('פ')) {
+        // Check for פ -> א
+        if (peyNode.spelling.includes('א')) {
+          loops.push(['א', 'פ']);
+          loops.push(['פ', 'א']);
+        }
+      }
+    }
+    return loops;
+  }
+
+  /**
+   * Identifies letters in the network whose spelling includes themselves, specifically 'מ' (Mem) and 'ו' (Vav).
+   * @returns An array of strings, listing the letters that have self-loops.
+   */
+  findSelfLoops(): string[] {
+    const selfLoops: string[] = [];
+    const memNode = this.getNode('מ');
+    const vavNode = this.getNode('ו');
+
+    if (memNode && memNode.spelling.includes('מ')) {
+      selfLoops.push('מ');
+    }
+    if (vavNode && vavNode.spelling.includes('ו')) {
+      selfLoops.push('ו');
+    }
+    return selfLoops;
+  }
+
+  /**
+   * Returns the string 'י' if a node for Yud exists in the network, indicating it as the defined hub.
+   * @returns The string 'י' if Yud exists, otherwise undefined.
+   */
+  getYudHub(): string | undefined {
+    return this.nodes.has('י') ? 'י' : undefined;
+  }
+}
+const standardGematria: Map<string, number> = new Map();
+standardGematria.set("א", 1);
+standardGematria.set("ב", 2);
+standardGematria.set("ג", 3);
+standardGematria.set("ד", 4);
+standardGematria.set("ה", 5);
+standardGematria.set("ו", 6);
+standardGematria.set("ז", 7);
+standardGematria.set("ח", 8);
+standardGematria.set("ט", 9);
+standardGematria.set("י", 10);
+standardGematria.set("כ", 20);
+standardGematria.set("ל", 30);
+standardGematria.set("מ", 40);
+standardGematria.set("נ", 50);
+standardGematria.set("ס", 60);
+standardGematria.set("ע", 70);
+standardGematria.set("פ", 80);
+standardGematria.set("צ", 90);
+standardGematria.set("ק", 100);
+standardGematria.set("ר", 200);
+standardGematria.set("ש", 300);
+standardGematria.set("ת", 400);
+standardGematria.set("ך", 500);
+standardGematria.set("ם", 600);
+standardGematria.set("ן", 700);
+standardGematria.set("ף", 800);
+standardGematria.set("ץ", 900);
 const hebrewSpellings = new Map<string, string[]>();
 hebrewSpellings.set("א", ["א", "ל", "ף"]);
 hebrewSpellings.set("ב", ["ב", "י", "ת"]);
@@ -299,7 +375,7 @@ hebrewSpellings.set("ן", ["נ", "ו", "ן"]); // Final Nun
 hebrewSpellings.set("ף", ["פ", "א"]); // Final Pey
 hebrewSpellings.set("ץ", ["צ", "ד", "י"]); // Final Tsade
 
-export const hebrewAlphabetNetwork = new HebrewAlphabetNetwork();
+export const hebrewAlphabetNetwork = new HebrewAlphabetNetwork(standardGematria);
 hebrewAlphabetNetwork.populateNetwork(hebrewSpellings);
 
 // --- Example Usage ---
