@@ -1,5 +1,6 @@
 i do
 // src/dataModels.ts
+import { type } from "os";
 
 /**
  * Interface representing a node in the Hebrew alphabet network.
@@ -86,6 +87,37 @@ export class HebrewAlphabetNetwork {
       }
     }
   }
+
+  /**
+ * Performs a Breadth-First Search (BFS) starting from a given letter.
+ * @param startLetter The letter to start the BFS from.
+ * @param callback A function to call for each visited node.
+ */
+  bfs(startLetter: string, callback: (node: HebrewLetterNode) => void): void {
+    const startNode = this.getNode(startLetter);
+    if (!startNode) {
+      return;
+    }
+
+    const visited = new Set<string>();
+    const queue: string[] = [startLetter];
+    visited.add(startLetter);
+
+    while (queue.length > 0) {
+      const currentLetter = queue.shift()!; // Dequeue the first letter
+      const currentNode = this.getNode(currentLetter)!;
+
+      callback(currentNode);
+
+      // Enqueue unvisited neighbors (letters in the spelling)
+      for (const nextLetter of currentNode.spelling) {
+        if (!visited.has(nextLetter)) {
+          visited.add(nextLetter);
+          queue.push(nextLetter);
+        }
+      }
+    }
+  }
   /**
    * Performs a Depth-First Search (DFS) starting from a given letter.
    * @param startLetter The letter to start the DFS from.
@@ -93,7 +125,7 @@ export class HebrewAlphabetNetwork {
    * @param visited (Optional) A Set to keep track of visited nodes during the traversal.
    */
   dfs(startLetter: string, callback: (node: HebrewLetterNode) => void, visited: Set<string> = new Set()): void {
-    const startNode = this.getNode(startLetter);
+ const startNode = this.getNode(startLetter);
     if (!startNode || visited.has(startLetter)) {
       return;
     }
@@ -184,7 +216,7 @@ export class HebrewAlphabetNetwork {
     // Perform DFS from unvisited nodes to find connected components (which could be islands or larger structures)
     this.nodes.forEach(node => {
       if (!visited.has(node.letter)) {
-        const island = new Set<string>();
+ const island = new Set<string>();
         this.dfs(node.letter, (visitedNode) => island.add(visitedNode.letter), visited);
         if (island.size > 0) islands.add(island);
       }
@@ -226,3 +258,19 @@ hebrewSpellings.set("ץ", ["צ", "ד", "י"]); // Final Tsade
 
 export const hebrewAlphabetNetwork = new HebrewAlphabetNetwork();
 hebrewAlphabetNetwork.populateNetwork(hebrewSpellings);
+
+// --- Example Usage ---
+
+console.log("--- DFS Example (Starting from Aleph) ---");
+hebrewAlphabetNetwork.dfs('א', (node) => {
+  console.log(`Visited: ${node.letter} (Gematria: ${node.gematria})`);
+});
+console.log("-----------------------------------------");
+
+console.log("--- Calculate Path Gematria Example (Bet, Yud, Tav) ---");
+const examplePath = ['ב', 'י', 'ת'];
+const pathGematria = hebrewAlphabetNetwork.calculatePathGematria(examplePath);
+console.log(`Gematria of path [${examplePath.join(', ')}]: ${pathGematria}`);
+console.log("-----------------------------------------------------");
+
+// --- End Example Usage ---
