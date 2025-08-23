@@ -162,6 +162,48 @@ export class HebrewAlphabetNetwork {
   }
 
   /**
+   * Maps a calculated island Gematria value to its corresponding tier name.
+   * @param gematriaValue The combined Gematria value of an island.
+   * @returns The name of the tier ("Tier 1", "Tier 2", etc.) or undefined if the value does not match a tier.
+   */
+  getTierByIslandGematria(gematriaValue: number): string | undefined {
+    switch (gematriaValue) {
+      case 547:
+        return "Tier 1";
+      case 500:
+        return "Tier 2";
+      case 287:
+        return "Tier 3";
+      case 81:
+        return "Tier 4";
+      case 80:
+        return "Tier 5";
+      default:
+        return undefined;
+    }
+  }
+
+  /**
+   * Calculates the Gematria for all identified islands and returns them with their corresponding tiers.
+   * @returns An array of objects, each containing the island name, its gematria, and its corresponding tier.
+   */
+  getAllIslandTiers(): { islandName: string; gematria: number | undefined; tier: string | undefined }[] {
+    const islandTiers: { islandName: string; gematria: number | undefined; tier: string | undefined }[] = [];
+    const islandNames = this.getAllIslandNames();
+
+    for (const islandName of islandNames) {
+      const gematria = this.calculateIslandGematria(islandName);
+      const tier = gematria !== undefined ? this.getTierByIslandGematria(gematria) : undefined;
+      islandTiers.push({
+        islandName,
+        gematria,
+        tier,
+      });
+    }
+    return islandTiers;
+  }
+
+  /**
    * Identifies disconnected subgraphs ("islands") in the network.
    * This is a simplified approach based on the provided spelling relationships.
    * A more robust graph algorithm might be needed for a truly disconnected component analysis

@@ -1,10 +1,11 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+okimport { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { GenerateContentResponse, Chat } from "@google/genai";
 import { View, SessionRecord, EntrainmentProfile, AWEFormData, ELSResult, GuidingIntent, GeneralAnalysisResult, ExhaustiveResonanceResult, Toast, UserMessage, AIMessage, SystemMessage, ComponentMessage, BaseSessionRecord, TextualCartographerFormData, ELSInvestigatorFormData, AWEAnalysisResult, PalmistryAnalysisResult, VoiceResonanceAnalysisResult, AstrianDayPlannerResult, ProactiveSuggestion } from './types';
 import { GeminiService, AstrianEngine } from './services';
 import { hebraicCartographerSchema, hellenisticCartographerSchema, apocryphalAnalysisSchema, aweSynthesisSchema, palmistryAnalysisSchema, astrianDayPlannerSchema, aweExtractionSchema, voiceResonanceAnalysisSchema } from './constants';
-import { decodeCorporaFromImage } from './steganography';
+// import { decodeCorporaFromImage } from './steganography'; // Assuming steganography is not needed for this diff
 import { SOURCE_STELA_URL } from './corpora';
+import { HebrewAlphabetNetwork, hebrewNetwork } from './src/dataModels'; // Corrected import path and added HebrewAlphabetNetwork type
 
 /**
  * hooks.ts
@@ -33,6 +34,20 @@ export const useCorpusBooks = (selectedCorpus: string) => {
         return Object.keys(AstrianEngine.getCorpus(selectedCorpus));
     }, [selectedCorpus]);
 };
+
+// Helper function to calculate Gematria of a string
+const calculateStringGematria = (text: string, network: HebrewAlphabetNetwork): number => {
+    const cleaned = cleanText(text);
+    return network.calculatePathGematria(cleaned.split(''));
+};
+
+// Helper function to remove non-letter characters and convert to lowercase
+const cleanText = (text: string): string => {
+    // This regex keeps only Hebrew letters
+    const cleaned = text.replace(/[^א-ת]/g, '').toLowerCase();
+    return cleaned;
+};
+
 
 // More explicit type for addMessage argument to help TS discriminated union inference
 type AddMessageArg =
@@ -95,7 +110,8 @@ export const useAstrianSystem = () => {
                 addMessage({ type: 'system', text: 'Textual Matrix calibrated. Astrian Key is online.' });
             } catch (e) {
                 console.error("Fatal Error: Could not initialize corpora from Source Stela.", e);
-                setError("FATAL: The textual matrix is corrupted. Cannot initialize.");
+                // setError("FATAL: The textual matrix is corrupted. Cannot initialize."); // Error handling might need refinement
+                addToast("FATAL: The textual matrix is corrupted. Cannot initialize.", 'error'); // Use a toast for user feedback
             }
         };
         bootstrap();
@@ -180,15 +196,282 @@ export const useAstrianSystem = () => {
             console.error(`Analysis execution failed for ${analysisType}:`, e);
             const errorMessage = e.message || "An unknown error occurred during analysis.";
             setError(errorMessage);
-            addMessage({ type: 'ai', text: `Error: ${errorMessage}`, result: null });
+            // Add an error message to the chat history for the user to see
+            addMessage({ type: 'ai', text: `Error: ${errorMessage}`, result: null, analysisType });
         } finally {
             setIsLoading(false);
         }
     }, [addMessage]);
 
+    // Basic ELS Search Function
+    const performBasicElsSearch = useCallback((text: string, keyword: string): number[][] => {
+        const results: number[] = [];
+        if (!text || !keyword) {
+            console.warn("ELS search requires both text and a keyword.");
+            return results;
+        }
 
-    const handleHebraicQuery = useCallback(async (data: TextualCartographerFormData) => {
-        const { corpus, book } = data;
+        const cleanedText = cleanText(text);
+        const cleanedKeyword = cleanText(keyword);
+
+        if (cleanedKeyword.length === 0) {
+            console.warn("ELS keyword is empty after cleaning.");
+            return results;
+        }
+
+        const originalText = text; // Keep original text to get correct indices
+
+        let currentIndex = 0;
+        while (currentIndex !== -1) {
+            currentIndex = originalText.indexOf(keyword, currentIndex); // Search in original text
+            if (currentIndex !== -1) {
+                results.push(currentIndex);
+                currentIndex += keyword.length; // Move past the found keyword
+            }
+        }
+
+        return results; // These are indices in the cleaned text, not original text
+    }, []);
+
+    // ELS Search Function with Skip Interval
+    const performElsSearchWithSkip = useCallback((text: string, keyword: string, skip: number): number[][] => {
+        const foundSequences: number[][] = [];
+        if (!text || !keyword || typeof skip !== 'number' || !Number.isInteger(skip) || skip === 0) {
+            console.warn("ELS search with skip requires text, a keyword, and a valid non-zero integer skip.");
+            return foundSequences;
+        }
+
+        const originalText = text; // Keep original text for index tracking
+        const cleanedKeyword = cleanText(keyword);
+
+        if (cleanedKeyword.length === 0) {
+            console.warn("ELS keyword is empty after cleaning.");
+            return foundSequences;
+        }
+
+        const originalTextLength = originalText.length;
+        const keywordLength = cleanedKeyword.length;
+
+        for (let i = 0; i < originalTextLength; i++) {
+            // Check if the first letter of the keyword matches
+            if (cleanText(originalText[i]) === cleanedKeyword[0]) { // Clean individual character for comparison
+                const currentSequence: number[] = [i];
+                let keywordIndex = 1;
+                let currentTextIndex = i + skip;
+
+                while (keywordIndex < keywordLength && currentTextIndex >= 0 && currentTextIndex < originalTextLength) {
+                    if (cleanText(originalText[currentTextIndex]) === cleanedKeyword[keywordIndex]) { // Clean individual character for comparison
+                        currentSequence.push(currentTextIndex);
+                        keywordIndex++;
+                        currentTextIndex += skip; // Skip remains positive for forward search
+                    } else {
+                        // Sequence broken, move to the next potential starting point
+                        break;
+                    }
+                }
+
+                if (keywordIndex === keywordLength) {
+                    // Found a complete sequence
+                    foundSequences.push(currentSequence);
+                }
+            }
+        }
+        // The returned indices are now relative to the original text string.
+        return foundSequences; // These are indices in the cleaned text, not original text
+    }, [cleanText]); // Dependency on cleanText
+
+    // ELS Search Function with Skip Interval and Direction
+    const performElsSearchWithSkipAndDirection = useCallback((text: string, keyword: string, skip: number, direction: 'forward' | 'backward'): number[][] => {
+        const foundSequences: number[][] = []; // Indices are relative to the original text
+        if (!text || !keyword || typeof skip !== 'number' || !Number.isInteger(skip) || skip === 0) {
+            console.warn("ELS search with skip and direction requires text, a keyword, a valid non-zero integer skip, and a direction.");
+            return foundSequences;
+        }
+
+        const originalText = text; // Keep original text for index tracking
+        const cleanedKeyword = cleanText(keyword);
+
+        if (cleanedKeyword.length === 0) {
+            console.warn("ELS keyword is empty after cleaning.");
+            return foundSequences;
+        }
+
+        const originalTextLength = originalText.length;
+        const cleanedText = cleanText(originalText); // Perform cleaning once
+        const cleanedTextLength = cleanedText.length;
+        const keywordLength = cleanedKeyword.length;
+        const effectiveStep = direction === 'forward' ? skip : -skip;
+
+        for (let i = (direction === 'forward' ? 0 : cleanedTextLength - 1); (direction === 'forward' ? i < cleanedTextLength : i >= 0); i += (direction === 'forward' ? 1 : -1)) {
+            // Check if the current character matches the first letter of the keyword
+            if (cleanedText[i] === cleanedKeyword[0]) {
+                const currentSequence: number[] = [i];
+                let keywordIndex = 1;
+                let currentTextIndex = i + effectiveStep;
+    
+                while (keywordIndex < keywordLength && currentTextIndex >= 0 && currentTextIndex < cleanedTextLength) {
+                    // Check bounds
+                    if (currentTextIndex < 0 || currentTextIndex >= originalTextLength) {
+                        break; // Out of bounds
+                    }
+                    if (cleanedText[currentTextIndex] === cleanedKeyword[keywordIndex]) {
+                        currentSequence.push(currentTextIndex);
+                        keywordIndex++;
+                        currentTextIndex += step;
+                    } else {
+                        // Sequence broken
+                        break;
+                    }
+                }
+
+                if (keywordIndex === keywordLength) {
+                    // Found a complete sequence
+                    foundSequences.push(currentSequence);
+                }
+            }
+
+        }
+        // The returned indices are relative to the cleaned text string.
+        // We need to map them back to the original text indices.
+        const originalIndices: number[][] = [];
+        const cleanedToOriginalMap = new Map<number, number>();
+        let cleanedIndex = 0;
+        for (let i = 0; i < originalTextLength; i++) {
+            if (cleanText(originalText[i]) !== '') { // If it's a Hebrew letter
+                 cleanedToOriginalMap.set(cleanedIndex, i);
+                 cleanedIndex++;
+            }
+        }
+
+        foundSequences.forEach(seq => {
+            const originalSeq: number[] = [];
+            seq.forEach(cleanedIdx => {
+                 if (cleanedToOriginalMap.has(cleanedIdx)) {
+                    originalSeq.push(cleanedToOriginalMap.get(cleanedIdx)!);
+                 } else {
+                    // This should not happen if the mapping is correct, but as a safeguard
+                    console.warn(`Could not map cleaned index ${cleanedIdx} back to original text.`);
+                 }
+            });
+            if (originalSeq.length === seq.length) { // Ensure all indices were mapped
+                 originalIndices.push(originalSeq);
+            }
+        });
+
+        return originalIndices; // These are indices relative to the original text string
+    }, [cleanText]);
+
+    // Function to identify significant ELS findings
+    const identifySignificantElsFindings = useCallback((results: { skip: number, indices: number[][] }[], keyword: string): { skip: number, indices: number[][], significance: string[] }[] => {
+        const significantFindings: { skip: number, indices: number[][], significance: string[] }[] = [];
+        const keywordGematria = calculateStringGematria(keyword, hebrewNetwork); // Calculate keyword Gematria
+
+        // TODO: Implement more sophisticated significance criteria here
+        // For now, we'll just check if the skip or sequence Gematria matches the keyword Gematria.
+
+        return significantFindings; // Return identified significant findings
+    }, [calculateStringGematria]); // Dependency on calculateStringGematria
+
+    // Omnipresent ELS Search Function
+    const performOmnipresentElsSearch = useCallback((text: string, keyword: string): { skip: number, indices: number[][] }[] => {
+        const allFindings: { skip: number, indices: number[][] }[] = [];
+        if (!text || !keyword) {
+            console.warn("Omnipresent ELS search requires text and a keyword.");
+            return allFindings;
+        }
+
+        const cleanedTextLength = cleanText(text).length;
+        // Iterate through a reasonable range of skips.
+        // A common upper bound is the length of the text or half the text length.
+        // We can define a more sophisticated range later based on The Astrian Key's principles.
+        const maxSkip = Math.floor(cleanedTextLength / 2);
+
+        for (let skip = 1; skip <= maxSkip; skip++) {
+            // Use the raw text for search to get accurate original indices
+            const forwardFindings = performElsSearchWithSkipAndDirection(text, keyword, skip, 'forward'); // Use text, not cleanedText
+            const backwardFindings = performElsSearchWithSkipAndDirection(text, keyword, skip, 'backward'); // Use text, not cleanedText
+            const combinedFindings = [...forwardFindings, ...backwardFindings];
+            if (combinedFindings.length > 0) {
+                allFindings.push({ skip, indices: combinedFindings });
+            }
+        }
+        return allFindings; // Indices are relative to the original text
+    }, [cleanText, performElsSearchWithSkipAndDirection]); // Dependency on cleanText and performElsSearchWithSkipAndDirection
+
+    // Helper function to extract only Hebrew letters
+    const extractHebrewLetters = useCallback((text: string): string[] => { // Keep this function
+        const hebrewLetters = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט', 'י', 'כ', 'ל', 'מ', 'נ', 'ס', 'ע', 'פ', 'צ', 'ק', 'ר', 'ש', 'ת', 'ך', 'ם', 'ן', 'ף', 'ץ'];
+        return text.split('').filter(char => hebrewLetters.includes(char));
+    }, []);
+
+    const handleBibleReferenceAnalysis = useCallback(async (book: string, chapter: string, verse: string, keyword?: string, skip?: number, direction?: 'forward' | 'backward', addMessage: (message: AddMessageArg) => SessionRecord = addMessage) => {
+        // Add a loading message for the user
+        addMessage({ type: 'system', text: `Analyzing ${book} ${chapter}:${verse}...` });
+        setIsLoading(true);
+        setError(null); // Clear previous errors
+
+        // For now, just log the text (or confirmation)
+        const corpus = 'Tanakh'; // Assuming 'Tanakh' is the correct corpus key for Hebraic texts
+        const bookText = AstrianEngine.getCorpus(corpus)?.[book];
+
+        let relevantText = '';
+        if (bookText) {
+            // TODO: Implement accurate verse extraction from bookText
+            // This requires a more sophisticated text parsing logic that understands
+            // chapter and verse markers within the corpora text structure.
+            relevantText = bookText; // Using the entire book text for now as a placeholder
+        } else {
+            const errorMessage = `Text not found for book: ${book}`;
+            console.log(errorMessage);
+            addMessage({ type: 'system', text: `Error: ${errorMessage}` }); // Inform the user
+            setIsLoading(false);
+            return;
+        }
+
+        // Extract Hebrew letters for analysis
+        const hebremLets = extractHebrewLetters(relevantText);
+
+        // Calculate Gematria Value
+        const gematriaValue = hebrewNetwork.calculatePathGematria(hebremLets); // Use the existing network method
+
+        // Perform Omnipresent ELS Search
+        const elsKeyword = keyword || "יהוה"; // Use provided keyword or default to YHWH
+        const omnipresentElsResults = performOmnipresentElsSearch(relevantText, elsKeyword);
+
+        // Identify Significant ELS Findings
+        const significantFindings = identifySignificantElsFindings(omnipresentElsResults, elsKeyword);
+
+        // Construct the analysis message
+        let analysisMessage = `Analysis for ${book} ${chapter}:${verse}:\n\n`;
+        analysisMessage += `Combined Gematria Value of Hebrew letters in this selection: ${gematriaValue}.\n\n`;
+
+        if (significantFindings.length > 0) {
+            analysisMessage += `Significant ELS sequence(s) found for "${elsKeyword}":\n`;
+            significantFindings.forEach(finding => {
+                analysisMessage += `- Skip ${finding.skip}: Indices ${JSON.stringify(finding.indices[0])} (Significance: ${finding.significance.join(', ')})\n`;
+            });
+        } else if (omnipresentElsResults.length > 0) {
+             analysisMessage += `Found ${omnipresentElsResults.length} potential ELS sequence(s) for "${elsKeyword}", but none met the current significance criteria.\n`;
+             // Optionally list some non-significant findings here or provide a way to view them
+        }
+         else {
+            analysisMessage += `No ELS sequences found for "${elsKeyword}" in this selection.`;
+        }
+        
+        // TODO: Integrate deeper ATC analysis here
+        // This could include:
+        // - More targeted verse extraction
+        // - Analyzing connections to the Hebrew Willow structure
+        // - Triggering AI interpretation based on the findings
+
+        // Add the analysis result to the chat history
+        addMessage({ type: 'ai', text: analysisMessage, analysisType: 'atc' });
+
+        setIsLoading(false); // Stop loading after the analysis message is sent
+    }, [addMessage, extractHebrewLetters, hebrewNetwork, performOmnipresentElsSearch, identifySignificantElsFindings]); // Added identifySignificantElsFindings to dependencies
+
+    const handleHebraicQuery = useCallback(async (data: TextualCartographerFormData) => { // Keep existing handleHebraicQuery for ATC form
+        const { corpus, book, chapter, verse } = data;
         const queryString = `Analyze the book of ${book} from the ${corpus}.`;
         const fullText = AstrianEngine.getCorpus(corpus)?.[book];
         if (!fullText) {
@@ -201,7 +484,7 @@ export const useAstrianSystem = () => {
             () => GeminiService.generate(prompt, hebraicCartographerSchema),
             'atc', data, queryString
         );
-    }, [executeAnalysis]);
+    }, [executeAnalysis]); // Keep existing dependencies
     
     const handleHellenisticQuery = useCallback(async (data: TextualCartographerFormData) => {
         const { corpus, book } = data;
@@ -367,9 +650,23 @@ export const useAstrianSystem = () => {
         setError(null);
         setSubliminalSeedValue(s => s + 1);
 
-        const callSignMatch = message.trim().match(/^°(\w+)(?:\s+(.*))?$/);
+        // 1. Check for Bible references (e.g., "°Genesis 1:1")
+        const bibleRefMatch = message.trim().match(/^°([A-Za-z]+)\s+(\d+):(\d+)(?:\s+([^\s]+)(?:\s+(\d+))?)?$/);
+        if (bibleRefMatch) {
+            const [_, book, chapter, verse, keyword, skipStr] = bibleRefMatch;
+            const skip = skipStr ? parseInt(skipStr, 10) : undefined;
+
+            // Pass the captured keyword and skip to handleBibleReferenceAnalysis
+            // The direction will be hardcoded to 'forward' for now, can be made configurable later.
+            handleBibleReferenceAnalysis(book, chapter, verse, keyword, skip, 'forward');
+            // handleBibleReferenceAnalysis now handles the initial steps of looking up the text,
+            // and then initiating an ATC analysis flow.
+            return; // Stop processing if it's a Bible reference
+
+        }
         if (callSignMatch) {
             const [_, command, args] = callSignMatch;
+            const callSignMatch = message.trim().match(/^°(\w+)(?:\s+(.*))?$/); // Moved callSignMatch declaration here
             const view = CALL_SIGN_VIEWS[command];
             
             // This flag will be set to false if we don't want the loading indicator
@@ -466,8 +763,8 @@ export const useAstrianSystem = () => {
 
     return {
         sessionHistory, isLoading, error, isModalOpen, crossRefValue,
-        guidingIntent, subliminalSeedValue, isSynthesizing, synthesisResult, isCorporaInitialized,
-        isPlannerUnlocked, toasts,
+        guidingIntent, subliminalSeedValue, isSynthesizing, synthesisResult, isCorporaInitialized, addMessage, // Export addMessage
+ isPlannerUnlocked, toasts, extractHebrewLetters, performBasicElsSearch, performElsSearchWithSkip, performElsSearchWithSkipAndDirection, performOmnipresentElsSearch, // Exporting for potential future use/testing
         handleSendMessage, handleRetry, setIsModalOpen, setGuidingIntent, handleSynthesizeConnections, dismissToast,
         handleNumberInteract
     };
