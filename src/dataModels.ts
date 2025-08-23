@@ -161,37 +161,17 @@ export class HebrewAlphabetNetwork {
   }
 
   /**
-   * Calculates the combined Gematria value of a set of letters,
-   * potentially representing an "island" or subgraph.
-   * @param letters A Set or array of Hebrew letters in the island/subgraph.
-   * @returns The total Gematria value of the letters in the set.
-   */
-  calculateSetGematria(letters: Set<string> | string[]): number {
-    let totalGematria = 0;
-    const letterSet = new Set(letters);
-    letterSet.forEach(letter => {
-      const node = this.getNode(letter);
-      if (node) {
-        totalGematria += node.gematria;
-      } else {
-        console.warn(`Letter "${letter}" not found in the network.`);
-        // Continue with the rest of the letters, but log the warning
-      }
-    });
-    return totalGematria;
-  }
-
-  /**
    * Identifies disconnected subgraphs ("islands") in the network.
    * This is a simplified approach based on the provided spelling relationships.
    * A more robust graph algorithm might be needed for a truly disconnected component analysis
    * if nodes can exist without being part of any spelling.
    * For this model, we'll identify letters that don't appear in the 'spelling' array
    * of any other letter, plus the components reachable from letters that are
-   * starting points in the spelling relationships.
-   * @returns An array of sets, where each set represents an island/subgraph.
+ * starting points in the spelling relationships and calculate their Gematria.
+   * @returns An array of objects, where each object represents an island/subgraph
+   * and contains a list of letter nodes and their combined Gematria value.
    */
-  findIslands(): Set<Set<string>> {
+  identifyAndCalculateIslands(): { nodes: HebrewLetterNode[], totalGematria: number }[] {
     const visited = new Set<string>();
     const islands: Set<Set<string>> = new Set();
     const lettersInSpellings = new Set<string>();
@@ -202,26 +182,89 @@ export class HebrewAlphabetNetwork {
     });
 
     // Identify isolated nodes (those not part of any spelling and not spelling themselves)
-    this.nodes.forEach(node => {
-        if (!lettersInSpellings.has(node.letter) && !node.spelling.includes(node.letter)) {
-            if (!visited.has(node.letter)) {
-                const island = new Set<string>();
-                island.add(node.letter);
-                visited.add(node.letter);
-                islands.add(island);
-            }
-        }
-    });
-
-    // Perform DFS from unvisited nodes to find connected components (which could be islands or larger structures)
+    // and perform DFS from any unvisited node to find connected components.
     this.nodes.forEach(node => {
       if (!visited.has(node.letter)) {
- const island = new Set<string>();
+        const island = new Set<string>();
         this.dfs(node.letter, (visitedNode) => island.add(visitedNode.letter), visited);
         if (island.size > 0) islands.add(island);
       }
     });
-    return islands;
+
+    // Convert sets of letters into the desired output format with nodes and total Gematria
+    const result: { nodes: HebrewLetterNode[], totalGematria: number }[] = [];
+    islands.forEach(islandSet => {
+      const islandNodes: HebrewLetterNode[] = [];
+      let totalGematria = 0;
+      islandSet.forEach(letter => {
+        const node = this.getNode(letter);
+        if (node) {
+          islandNodes.push(node);
+          totalGematria += node.gematria;
+        }
+      });
+      result.push({
+        nodes: islandNodes,
+        totalGematria: totalGematria
+      });
+    });
+
+    return result;
+  }
+
+  /**
+   * Returns the Hebrew letters belonging to a specific island.
+   * @param islandName The name of the island (e.g., "Primary Chain", "Aleph-Pey Loop").
+   * @returns An array of Hebrew letters in the island, or undefined if the name is not recognized.
+   */
+  getIslandLetters(islandName: string): string[] | undefined {
+    switch (islandName) {
+      case "Primary Chain":
+        return ["ז", "י", "נ", "ו", "ד", "ל", "ת", "מ"];
+      case "Aleph-Pey Loop":
+        return ["א", "פ"];
+      case "Resh-Shin Island":
+        return ["ר", "ש"];
+      case "Samekh-Kaf Island":
+        return ["ס", "כ"];
+      case "Isolated Letters":
+        return ["ב", "ג", "ה", "ח", "ט", "ע", "צ", "ק"];
+      default:
+        return undefined;
+    }
+  }
+
+  /**
+   * Calculates the combined Gematria value of a specific island.
+   * @param islandName The name of the island.
+   * @returns The total Gematria value of the island, or undefined if the island name is not recognized or a letter is not found.
+   */
+  calculateIslandGematria(islandName: string): number | undefined {
+    const islandLetters = this.getIslandLetters(islandName);
+    if (!islandLetters) {
+      console.warn(`Island "${islandName}" not recognized.`);
+      return undefined;
+    }
+
+    let totalGematria = 0;
+    for (const letter of islandLetters) {
+      const node = this.getNode(letter);
+      if (node) {
+        totalGematria += node.gematria;
+      } else {
+        console.warn(`Letter "${letter}" in island "${islandName}" not found in the network.`);
+        return undefined; // Or handle this case differently
+      }
+    }
+    return totalGematria;
+  }
+
+  /**
+   * Returns an array of all defined island names.
+   * @returns A string array of island names.
+   */
+  getAllIslandNames(): string[] {
+    return ["Primary Chain", "Aleph-Pey Loop", "Resh-Shin Island", "Samekh-Kaf Island", "Isolated Letters"];
   }
 }
 
