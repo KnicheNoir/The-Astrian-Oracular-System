@@ -129,7 +129,7 @@ export const useAstrianSystem = () => {
         if (isAweComplete) return;
 
         const historySummary = currentHistory.slice(-5).map(m => `${m.type}: ${m.type === 'user' ? (m as UserMessage).text : '(AI Response)'}`).join('\n');
-        const prompt = `Act as a data extractor. Analyze the user's latest query in the context of the recent conversation.
+        const prompt = `Act as a data ok flip a  extractor. Analyze the user's latest query in the context of the recent conversation.
         Query: "${userQuery}"
         History: ${historySummary}
         Current user profile is: ${JSON.stringify(aweData)}.
@@ -280,10 +280,12 @@ export const useAstrianSystem = () => {
         return foundSequences; // These are indices in the cleaned text, not original text
     }, [cleanText]); // Dependency on cleanText
 
-    // ELS Search Function with Skip Interval and Direction - Indices are relative to the original text
+    // ELS Search Function with Skip Interval and Direction - Returns indices relative to the original text
     const performElsSearchWithSkipAndDirection = useCallback((text: string, keyword: string, skip: number, direction: 'forward' | 'backward'): number[][] => {
         const foundSequences: number[][] = []; // Indices are relative to the original text
-        if (!text || !keyword || typeof skip !== 'number' || !Number.isInteger(skip) || skip === 0) {
+        if (!text || typeof text !== 'string' || !keyword || typeof keyword !== 'string' || typeof skip !== 'number' || !Number.isInteger(skip) || skip === 0) {
+            console.error("Invalid arguments provided to performElsSearchWithSkipAndDirection", { text, keyword, skip, direction });
+
             console.warn("ELS search with skip and direction requires text, a keyword, a valid non-zero integer skip, and a direction.");
             return foundSequences;
         }
@@ -297,19 +299,21 @@ export const useAstrianSystem = () => {
         }
 
         const originalTextLength = originalText.length;
-        const cleanedText = cleanText(originalText); // Perform cleaning once
+        const cleanedText = cleanText(originalText);
         const keywordLength = cleanedKeyword.length;
+        const cleanedTextLength = cleanedText.length;
 
-        const effectiveStep = direction === 'forward' ? skip : -skip;
+        const step = direction === 'forward' ? skip : -skip; // Use 'step' for clarity with direction
 
-        for (let i = (direction === 'forward' ? 0 : cleanedTextLength - 1); (direction === 'forward' ? i < cleanedTextLength : i >= 0); i += (direction === 'forward' ? 1 : -1)) {
-            // Check if the current character matches the first letter of the keyword
-            if (cleanedText[i] === cleanedKeyword[0]) {
+        // Iterate through the cleaned text
+        for (let i = (direction === 'forward' ? 0 : cleanedTextLength - 1); (direction === 'forward' ? i < cleanedTextLength : i >= 0); i += (direction === 'forward' ? 1 : -1)) { // Iteration direction based on ELS direction
+             // Check if the current character matches the first letter of the keyword after cleaning
+            if (cleanedText[i] && cleanedText[i] === cleanedKeyword[0]) { // Added check for cleanedText[i] existence
                 const currentSequence: number[] = [i];
                 let keywordIndex = 1;
-                let currentTextIndex = i + effectiveStep;
-    
-                while (keywordIndex < keywordLength && currentTextIndex >= 0 && currentTextIndex < cleanedTextLength) { // Corrected boundary check
+                let currentTextIndex = i + step; // Use step
+
+                while (keywordIndex < keywordLength && currentTextIndex >= 0 && currentTextIndex < cleanedTextLength) {
                      if (cleanedText[currentTextIndex] === cleanedKeyword[keywordIndex]) {
                         currentSequence.push(currentTextIndex);
 
@@ -327,7 +331,7 @@ export const useAstrianSystem = () => {
                 }
             }
 
-        }
+         }
         // The returned indices are relative to the cleaned text string.
         // We need to map them back to the original text indices.
         const originalIndices: number[][] = [];
@@ -354,16 +358,320 @@ export const useAstrianSystem = () => {
              // This check might be redundant if mapping is correct, but good for safety.
              // A more robust check would be to re-verify the ELS in the original text based on mapped indices.
              if (originalSeq.length === seq.length) {
-                 originalIndices.push(originalSeq);
+                originalIndices.push(originalSeq);
             }
         });
 
         return originalIndices; // These are indices relative to the original text string
     }, [cleanText]); // Dependency on cleanText
 
+    // Helper function to check if an ELS sequence forms a meaningful phrase
+    const checkForMeaningfulPhrases = useCallback((indices: number[], text: string): string[] => {
+        const sequenceLetters = indices.map(index => text[index] || '').join(''); // Use original letters for phrase matching
+        const reasons: string[] = []; // Initialize as empty array
+
+        // Define an array of common Hebrew consonant roots
+        const commonHebrewRoots = [
+            'קדש', 'שלם', 'ברא', 'אלה', 'שמים', 'ארץ', 'חי', 'אמת', 'כליל', 'ספר', 'עולם', 'נפש', 'רוח', 'גוף', 'דעת'
+        ];
+
+        // Define lists of common Hebrew prefixes and suffixes
+        const commonHebrewPrefixes = ['ב', 'כ', 'ל', 'מ', 'ש', 'ה', 'ו']; // Example prefixes (without vowels)
+        const commonHebrewSuffixes = ['ים', 'ות', 'ה']; // Example suffixes (without vowels)
+
+
+
+
+        // A significantly larger predefined list of common and relevant Hebrew words
+        const commonHebrewPhrases = [
+            "בראשית ברא אלהים", "יהוה אלהים", "ארץ ושמים", "והארץ היתה תהו ובהו", "ורוח אלהים מרחפת על פני המים", "יהי אור ויהי אור", "אלהים ראה את האור כי טוב", "ויבדל אלהים בין האור ובין החשך"
+        ];
+        // This list includes words related to biblical concepts, gematria, kabbalah, etc., and their base forms.
+        // Words are in base form and lowercase for comparison.
+        const commonHebrewWords = [
+            "אב", "אבא", "אבה", "אבן", "אדם", "אדמה", "אדני", "אהב", "אהבה", "אוהב", "אור", "אות", "אזן", "אח", "אחר", "אחות", "איש", "אלה", "אלהים", "אלף", "אם", "אמן", "אמר", "אמת",
+            "אנכי", "אני", "אף", "אפר", "ארבע", "ארון", "ארץ", "אש", "אשר", "את", "אתה", "אתם", "בגד", "בהמה", "בוקר", "בורא", "בית", "בכור", "בל", "בן", "בנה", "בני", "בקר", "ברא", "ברכה",
+            "ברית", "בשר", "בת", "גב", "גדול", "גוז", "גוי", "גוף", "גור", "גזע", "גיל", "גל", "גלגל", "גם", "גן", "גנב", "געש", "גפן", "גר", "דרך", "דבר", "דבש", "דוד", "דור", "דם", "דמע",
+            "דעת", "דק", "דקל", "דשן", "הוא", "היה", "הלך", "הלל", "הנה", "הר", "ורד", "זה", "זכר", "זמן", "זרע", "חוה", "חזה", "חטא", "חטא", "חי", "חיה", "חכם", "חכמה", "חלום", "חלב",
+            "חם", "חמס", "חסד", "חסר", "חרב", "חרי", "חרם", "חשב", "חשך", "חתן", "טוב", "טובע", "טהר", "טהרה", "טמא", "טמאה", "טעם", "טרם", "ים", "ידע", "יד", "יהודה", "יהוה", "יום",
+            "יוצר", "יחד", "יחיד", "ילד", "ילד", "ימין", "יסוד", "יעד", "יפה", "יצא", "יצר", "יצחק", "יקיר", "ירא", "ירא", "ירד", "ישב", "ישועה", "ישראל", "יתר", "כבד", "כבוד", "כהן",
+            "כול", "כוכב", "כי", "כלי", "כם", "כמו", "כסף", "כסא", "כעס", "כפר", "כתב", "כתר", "לב", "לבד", "לבוש", "לחם", "למד", "למשל", "למטה", "למערב", "למעלה", "למזרח", "לנו",
+            "לעולם", "לפני", "לקח", "לשון", "לשם", "מאד", "מאה", "מאור", "מבוא", "מגדל", "מדי", "מדבר", "מה", "מובא", "מוצא", "מזבח", "מזל", "מחנה", "מחשבה", "מטרה", "מלך", "מלכות",
+            "מם", "מנהיג", "מנורה", "מספר", "מעט", "מעלה", "מערב", "מקדש", "מקום", "מרכבה", "משכן", "משפט", "נביא", "נבואה", "נגד", "נהר", "נוח", "נח", "נחש", "נטע", "ניר", "נפש", "נצר",
+            "נר", "נשמה", "נתן", "סוד", "סוכה", "סלע", "ספר", "עב", "עבד", "עבד", "עבור", "עז", "עזר", "עין", "עיר", "עם", "עמד", "עולם", "עולת", "עץ", "עפר", "עקב", "ערב", "ערך",
+            "עשר", "עת", "פה", "פורה", "פתח", "פני", "פסח", "צבא", "צדק", "צוה", "צאן", "ציון", "צמח", "צפון", "קבר", "קדש", "קהל", "קול", "קום", "קודש", "קנה", "קניין", "קרא", "קרבן",
+            "קשת", "ראש", "ראשי", "רגל", "רוח", "רחמים", "רע", "רעה", "רקיע", "שאר", "שאול", "שבת", "שבע", "שדה", "שוב", "שופט", "שופר", "שור", "שמים", "שמע", "שם", "שנה", "שנא",
+            "שער", "שפה", "שקל", "שר", "שרה", "שרף", "תאנה", "תורה", "תחת", "תוצאה", "תודה", "תמיד", "תפילה", "תקופה", "תשובה", "תשע", "תשעה",
+            // Words related to Astrian Key concepts
+            "כליל", "ספירה", "עולם", "נשמה", "רוח", "נפש", "יחידה", "חיה", "כסא", "מרכבה", "רקיע", "שמים", "ארץ", "תהום", "תוהו", "בוהו", "חשך", "אור", "חיים", "מוות",
+            "אות", "מלה", "צרוף", "גימטריה", "נוטריקון", "תמורה", "פרדס", "רמז", "דרש", "סוד", "פשט", "גוף", "נפש", "רוח", "שכל", "נורא", "אדיר", "קדוש", "ברוך", "מבורך",
+            "אמת", "שקר", "טוב", "רע", "ישר", "עקוב", "פשט", "קשר", "דבר", "חכמה", "בינה", "דעת", "חסד", "גבורה", "תפארת", "נצח", "הוד", "יסוד", "מלכות", "כתר",
+            "היולי", "תולדה", "האצלה", "בריאה", "יצירה", "עשיה", "אדם קדמון", "אדם עליון", "אדם תחתון", "צמצום", "קו", "רשימו", "שבירת כלים", "תיקון", "אחוריים", "פנים",
+            "זוהר", "ספר יצירה", "ספר הבהיר", "עץ חיים", "פרי עץ חיים", "שער הכוונות", "תומר דבורה", "שולחן ערוך", "משנה תורה", "תלמוד", "מדרש", "פיוט", "תחנון",
+            "מלאך", "שרף", "אראלים", "חשמלים", "מלכים", "בני אלהים", "אלהים", "יהוה", "אדני", "אהיה", "שדי", "צבאות", "אלהים צבאות", "יהוה צבאות", "אל עליון", "אל שדי", "אל רחום וחנון",
+            "שם המפורש", "א"ב"ג"י"ת"צ", "קר"ע שטן נג"ד יכ"ש בט"ר צת"ג", // Gematria related sequences/names
+            "פרצוף", "אריך אנפין", "זעיר אנפין", "אבא", "אמא", "ישראל סבא", "תבונה", "רחל", "לאה",
+            "נקודה", "קו", "שטח", "גוף", "עולם", "שנה", "נפש", "חומר", "צורה", "סיבה", "מסובב", "תכלית",
+            "חיים", "מוות", "טוב", "רע", "אמת", "שקר", "שלום", "מלחמה", "בריאה", "חורבן", "בניין", "הריסה",
+            "זמן", "מקום", "תנועה", "שינוי", "התפתחות", "נסיגה", "מעגל", "קו ישר", "ספירלה", "גל", "תדר",
+            "אחד", "שנים", "שלוש", "ארבע", "חמש", "שש", "שבע", "שמונה", "תשע", "עשר", "מאה", "אלף", "רבוא",
+            "ראשית", "אחרית", "תחילה", "סוף", "אמצע", "צפון", "דרום", "מזרח", "מערב", "מעלה", "מטה",
+            "עיגול", "ריבוע", "משולש", "קו", "נקודה", "חלל", "זמן", "אור", "צל", "אש", "מים", "רוח", "עפר",
+            "יוד", "הא", "ויו", "הא", // Yud Hey Vav Hey
+            "אב", "בן", "רוח הקדש", "משפחה", "קהילה", "אומה", "עולם", "יקום", "קוסמוס", "מקרוקוסמוס", "מיקרוקוסמוס",
+            "נבט", "שורש", "גזע", "ענף", "עלה", "פרח", "פרי", "זרע", "קליפה", "גרעין", "עץ", "גן", "שדה",
+            "בית", "מקדש", "מזבח", "שולחן", "מנורה", "ארון", "פרוכת", "קודש הקדשים", "היכל", "אולם", "חצר",
+            "בגד", "כלי", "כסף", "זהב", "נחושת", "ברזל", "עץ", "אבן", "מים", "אש", "רוח", "עפר",
+            "חי", "מת", "ישן", "ער", "אוכל", "שותה", "הולך", "יושב", "עומד", "שוכב", "מדבר", "שותק", "רואה", "שומע", "מרגיש", "חושב", "יודע", "מאמין",
+            "תפילה", "ברכה", "הודאה", "בקשה", "וידוי", "תשובה", "צדקה", "חסד", "גבורה", "רחמים", "אמת", "שלום", "משפט", "דין", "חן", "רצון", "אהבה", "יראה",
+            "מצווה", "חוק", "משפט", "עדות", "פרוש", "דרש", "רמז", "סוד", "פרדס",
+            "גלות", "גאולה", "משיח", "בן דוד", "בן יוסף", "אליהו", "צדיק", "רשע", "בינוני",
+            "עולם הבא", "גן עדן", "גיהינום", "תחיית המתים", "יום הדין", "עולם האצילות", "עולם הבריאה", "עולם היצירה", "עולם העשיה",
+            "כסא הכבוד", "מרכבה", "אופנים", "חיות הקודש", "שרפים", "אראלים", "תרשישים", "מלכים", "בני אלהים", "ישראל",
+            "זכר", "נקבה", "אדם", "חוה", "איש", "אשה", "זוג", "פרי", "רביה", "לידה", "מוות",
+            "ראש", "לב", "כבד", "ריאה", "כליות", "עצמות", "דם", "בשר", "עור", "גידים", "עצבים",
+            "עין", "אוזן", "פה", "אף", "יד", "רגל", "אצבע", "ציפורן", "שער", "עור", "בשר",
+            "שמש", "ירח", "כוכב", "מזל", "שבתאי", "צדק", "מאדים", "חמה", "נוגה", "כוכב", "לבנה",
+            "אביב", "קיץ", "סתיו", "חורף", "יום", "לילה", "שעה", "דקה", "שניה", "רגע", "עידן", "תקופה",
+            "ברק", "רעם", "גשם", "טל", "שלג", "ברד", "ענן", "רוח", "סערה", "רעידת אדמה", "צונאמי", "הר געש",
+            "אריה", "שור", "נמר", "דוב", "זאב", "שועל", "חתול", "כלב", "אריה", "נשר", "נחש", "דג", "ציפור",
+            "עץ חיים", "עץ הדעת", "נהר", "גן עדן", "ארבעה נהרות", "פישון", "גיחון", "חדקל", "פרת",
+            "אברהם", "יצחק", "יעקב", "שרה", "רבקה", "רחל", "לאה", "שנים עשר שבטים", "משה", "אהרן", "מרים", יהושע",
+            "שופטים", "מלכים", "נביאים", "כתובים", "תורה", "נביאים ראשונים", "נביאים אחרונים", "כתובים",
+            "תהילים", "משלי", "איוב", "שיר השירים", "רות", "איכה", "קהלת", "אסתר", דניאל", "עזרא", "נחמיה", "דברי הימים",
+            "ישעיהו", "ירמיהו", "יחזקאל", "הושע", "יואל", "עמוס", "עובדיה", "יונה", מיכה", "נחום", "חבקוק", "צפניה", "חגי", "זכריה", "מלאכי",
+            "בראשית", "שמות", "ויקרא", "במדבר", "דברים",
+            "הלכה", "אגדה", "מצווה", "עבירה", "חטא", "זכות", "עונש", "שכר",
+            "קודש", "חול", "טהור", "טמא", "מותר", "אסור", "מצוה עשה", "מצוה לא תעשה",
+            "שם", "פועל", "תואר", "תואר הפועל", מלת יחס", "מלת קישור", "מלת שאלה", מלת קריאה",
+            "יחיד", "רבים", "זכר", "נקבה", "עבר", "הווה", "עתיד", "ציווי", "מקור", "בינוני",
+            "שורש", "בניין", "גזרת", "משקל", "נטיה", "סמיכות", "כינוי", "שם עצם", שם תואר",
+            "תנ"ך", "משנה", "תלמוד", "מדרש", "קבלה", "חסידות", מוסר", "הלכה", אגדה",
+            "ראש השנה", "יום כיפור", "סוכות", "פסח", "שבועות", "פורים", "חנוכה", "ט"ו בשבט", "ל"ג בעומר", "תשעה באב",
+            "ארץ ישראל", "ירושלים", "בית המקדש", "הכותל המערבי", "הר הבית", "כינרת", "ים המלח", "נהר הירדן",
+            "שבט", "עגל", "פר", "כבש", "איל", "עז", "גדי", "שור", "פרה", "שורש",
+            "מספר", "גימטריה", "אות", "מילה", "פסוק", "פרק", "ספר", "תורה", "נביאים", "כתובים",
+            "בריאה", "יצירה", "עשיה", "אצילות", "קדמון", "אדם", "עולם", "שנה", "נפש",
+            "חיים", "מוות", "טוב", "רע", "אמת", "שקר", "שלום", "מלחמה",
+            "זמן", "מקום", "תנועה", "שינוי", "התפתחות", "נסיגה",
+            "אור", "צל", "אש", "מים", "רוח", "עפר",
+            "יוד", "הא", "ויו", "הא",
+            "אלף", "בית", "גימל", "דלת", "הא", "ויו", "זין", "חית", "טית", "יוד", "כף", "למד", "מם", "נון", "סמך", "עין", "פה", "צדי", "קוף", "ריש", "שין", "תו",
+             "כף סופית", "מם סופית", "נון סופית", "פה סופית", "צדי סופית"
+        ];
+
+        const cleanedSequenceLetters = cleanText(sequenceLetters);
+
+        // Check if the ELS sequence itself forms a known word
+        if (commonHebrewWords.includes(cleanedSequenceLetters)) {
+            reasons.push(`Forms the Hebrew word: ${cleanedSequenceLetters}`);
+        }
+
+        // Check if the ELS sequence itself forms a common phrase
+        if (commonHebrewPhrases.includes(sequenceLetters)) { // Use sequenceLetters (original case/punctuation) for phrases
+             reasons.push(`Forms the common Hebrew phrase: ${sequenceLetters}`);
+        } else {
+            // Clean the sequence for phrase matching (remove non-letters)
+             const cleanedSequenceForPhrase = extractHebrewLetters(sequenceLetters).join('');
+             if (commonHebrewPhrases.includes(cleanedSequenceForPhrase)) {
+                 reasons.push(`Forms the common Hebrew phrase: ${cleanedSequenceForPhrase} (cleaned)`);
+             }
+        }
+
+        // Check combinations with adjacent letters
+        if (indices.length > 0) {
+            const firstIndex = indices[0];
+            const lastIndex = indices[indices.length - 1];
+            const elsSequenceString = sequenceLetters; // Use original case for combinations
+
+            const adjacentCombinations: string[] = [];
+
+            // Check combinations with up to 2 preceding letters
+            for (let i = 1; i <= 2; i++) {
+                if (firstIndex - i >= 0) {
+                    const precedingLetters = text.substring(firstIndex - i, firstIndex); // Get original letters
+                    adjacentCombinations.push(precedingLetters + elsSequenceString);
+                    adjacentCombinations.push(cleanText(precedingLetters) + cleanedSequenceLetters); // Cleaned version
+                }
+            }
+
+            // Check combinations with up to 2 succeeding letters
+            for (let i = 1; i <= 2 && lastIndex + i < text.length; i++) { // Added bounds check
+                if (lastIndex + i < text.length) {
+                    const succeedingLetters = text.substring(lastIndex + 1, lastIndex + 1 + i); // Get original letters
+                    adjacentCombinations.push(elsSequenceString + succeedingLetters);
+                    adjacentCombinations.push(cleanedSequenceLetters + cleanText(succeedingLetters)); // Cleaned version
+                }
+            }
+
+            // Check combinations with one preceding and one succeeding letter
+            if (firstIndex > 0 && lastIndex < text.length - 1) {
+                const beforeLetter = text[firstIndex - 1];
+                const afterLetter = text[lastIndex + 1];
+                adjacentCombinations.push(beforeLetter + elsSequenceString + afterLetter);
+                adjacentCombinations.push(cleanText(beforeLetter) + cleanedSequenceLetters + cleanText(afterLetter)); // Cleaned version
+            }
+            // Check generated combinations against word and phrase lists
+            adjacentCombinations.forEach(combo => {
+                 const cleanedCombo = cleanText(combo); // Clean combo for word check
+
+                 // Check for common prefixes and suffixes in the cleaned combination
+                 commonHebrewPrefixes.forEach(prefix => {
+                    if (cleanedCombo.startsWith(prefix) && cleanedCombo.length > prefix.length) {
+                        reasons.push(`Combination starts with common prefix: ${prefix}`);
+                    }
+                 });
+
+                 commonHebrewSuffixes.forEach(suffix => {
+                     if (cleanedCombo.endsWith(suffix) && cleanedCombo.length > suffix.length) {
+                        reasons.push(`Combination ends with common suffix: ${suffix}`);
+                    }
+                 });
+
+                 // Check the cleaned combination against the word lexicon
+                 if (commonHebrewWords.includes(cleanedCombo)) {
+                    // Add reason for forming a word
+                    reasons.push(`Forms word '${cleanedCombo}' with adjacent letters`); // Simplified reason for now
+                 }
+
+                 // Check against phrases (using original case/punctuation for phrases if desired, but usually cleaned is better for matching)
+                 const cleanedComboForPhrase = extractHebrewLetters(combo).join('');
+                 if (commonHebrewPhrases.includes(cleanedComboForPhrase)) {
+                    // Find which adjacent letters were used for a more specific reason
+                    let adjacentPart = '';
+                    if (combo.startsWith(cleanText(text.substring(firstIndex - 2, firstIndex)))) adjacentPart += '2 preceding, ';
+                    else if (combo.startsWith(cleanText(text[firstIndex - 1]))) adjacentPart += '1 preceding, ';
+                    if (combo.endsWith(cleanText(text.substring(lastIndex + 1, lastIndex + 3)))) adjacentPart += '2 succeeding, ';
+                    else if (combo.endsWith(cleanText(text[lastIndex + 1]))) adjacentPart += '1 succeeding, ';
+
+                    if (adjacentPart.endsWith(', ')) adjacentPart = adjacentPart.slice(0, -2);
+                    if (adjacentPart) {
+                        reasons.push(`Forms word '${cleanedCombo}' with adjacent letters (${adjacentPart})`);
+                    } else {
+                         // Fallback if specific adjacent letters can't be determined from the combo string
+                         reasons.push(`Forms a word '${cleanedCombo}' with adjacent letters`);
+                    } // This part seems to be for word, let's move it to word check below
+                 } // This entire block seems misplaced, move to word check logic below
+            }); // This foreach loop seems to be for combinations, need to revisit word/phrase checks below.
+            // // Get letter immediately before (if exists and is Hebrew)
+            // if (firstIndex > 0) {
+            //     const beforeLetter = cleanText(text[firstIndex - 1]);
+            //     if (beforeLetter) {
+            //         const combo = beforeLetter + cleanedSequenceLetters;
+            //         if (commonHebrewWords.includes(combo)) {
+            //             reasons.push(`Forms word '${combo}' with preceding letter`);
+            //         }
+            //     }
+            // }
+            // // Get letter immediately after (if exists and is Hebrew)
+            // if (lastIndex < text.length - 1) {
+            //     const afterLetter = cleanText(text[lastIndex + 1]);
+            //     if (afterLetter) {
+            //         const combo = cleanedSequenceLetters + afterLetter;
+            //         if (commonHebrewWords.includes(combo)) {
+            //             reasons.push(`Forms word '${combo}' with succeeding letter`);
+            //         }
+            //     }
+            // }
+        }
+        // Re-implementing the checks for clarity after refining the combination generation
+        const stringsToCheck = [cleanedSequenceLetters]; // Always check the sequence itself
+
+        if (indices.length > 0) {
+            const firstIndex = indices[0];
+            const lastIndex = indices[indices.length - 1];
+
+            // Add combinations with adjacent letters
+            for (let i = 1; i <= 2; i++) {
+                if (firstIndex - i >= 0) {
+                     stringsToCheck.push(cleanText(text.substring(firstIndex - i, firstIndex)) + cleanedSequenceLetters);
+                }
+            }
+            for (let i = 1; i <= 2 && lastIndex + i < text.length; i++) {
+                 if (lastIndex + i < text.length) {
+                      stringsToCheck.push(cleanedSequenceLetters + cleanText(text.substring(lastIndex + 1, lastIndex + 1 + i)));
+                 }
+             }
+            if (firstIndex > 0 && lastIndex < text.length - 1) {
+                stringsToCheck.push(cleanText(text[firstIndex - 1]) + cleanedSequenceLetters + cleanText(text[lastIndex + 1]));
+            }
+        }
+
+        // Check all generated strings against word and phrase lists, and for prefixes/suffixes
+        stringsToCheck.forEach(str => {
+            if (str.length === 0) return; // Skip empty strings
+
+            // Check for common prefixes and suffixes
+            commonHebrewPrefixes.forEach(prefix => {
+                if (str.startsWith(prefix) && str.length > prefix.length && !reasons.includes(`Starts with common prefix: ${prefix}`)) { // Avoid duplicate reasons
+                    reasons.push(`Starts with common prefix: ${prefix}`);
+                }
+            });
+            commonHebrewSuffixes.forEach(suffix => {
+                if (str.endsWith(suffix) && str.length > suffix.length && !reasons.includes(`Ends with common suffix: ${suffix}`)) { // Avoid duplicate reasons
+                    reasons.push(`Ends with common suffix: ${suffix}`);
+                }
+            });
+             // Check against the word lexicon
+             if (commonHebrewWords.includes(str) && !reasons.includes(`Forms the Hebrew word: ${str}`)) { // Avoid duplicate reasons
+                reasons.push(`Forms the Hebrew word: ${str}`);
+             }
+             // Check against common phrases (use cleaned string as phrases are also cleaned)
+             if (commonHebrewPhrases.includes(str) && !reasons.includes(`Forms the common Hebrew phrase: ${str}`)) { // Avoid duplicate reasons
+                reasons.push(`Forms the common Hebrew phrase: ${str}`);
+             }
+
+                 // Check for common consonant roots
+                 const consonantSequence = str.split('').filter(char => char !== 'ו' && char !== 'י').join(''); // Basic consonant extraction
+                 commonHebrewRoots.forEach(root => {
+                     if (consonantSequence.includes(root) && !reasons.includes(`Contains the root: ${root}`)) { // Check if root is a substring
+                         reasons.push(`Contains the root: ${root}`);
+                     }
+                 });
+
+        });
+
+        return reasons; // Return array of reasons
+    }, [cleanText, extractHebrewLetters]); // Added extractHebrewLetters to dependencies
+
+    // Helper function to calculate Gematria of a number (simple mapping for now)
+    // A more sophisticated mapping based on The Astrian Key's principles
+    // could be developed here.
+    const calculateNumberGematria = useCallback((num: number): number => {
+        // As a basic placeholder, we can convert the number to its Hebrew word
+        // and then calculate the Gematria of the word. This is highly simplified.
+        // A proper implementation would require a system for mapping numbers to
+        // Hebrew concepts/letters within the Astrian Key framework.
+        // For now, let's just return the number itself as a 'Gematria value'
+        // for comparison purposes in this basic implementation.
+        // This is a very basic example. You might need a more sophisticated mapping
+        // based on how numbers relate to the Hebrew Alphabet Network's structure.
+        // For now, we'll just use the number itself.
+        return num;
+    }, []);
+
     // Function to identify significant ELS findings
-    const identifySignificantElsFindings = useCallback((results: { skip: number, indices: number[][] }[], keyword: string): { skip: number, indices: number[][], significance: string[] }[] => {
-        const significantFindings: { skip: number, indices: number[][], significance: string[] }[] = [];
+    const identifySignificantElsFindings = useCallback((results: { skip: number, indices: number[][] }[], keyword: string, text: string): { skip: number, indices: number[][], significance: string[] }[] => { // Added text parameter
+        const significantFindings: { skip: number, indices: number[][], significance: string[] }[] = []; // Keep track of significant findings
+        // const encounteredFindings = new Set<string>(); // To avoid duplicate significant entries if multiple criteria match - Not needed with current approach
+
+        // Define tier Gematria values
+        const tierGematriaValues: { [key: number]: number } = {
+            1: 547, // Tier 1: Keter - Malkhut
+            2: 500, // Tier 2: Chokhmah - Yesod
+            3: 287, // Tier 3: Binah - Hod
+            4: 81,  // Tier 4: Chesed - Netzach
+            5: 80   // Tier 5: Gevurah - Tiferet
+            // Add more tiers if defined
+        };
+
+        // Helper to calculate Gematria of a string
+        const calculateStringGematriaHelper = (str: string): number => {
+            // Ensure the string contains only Hebrew letters before calculation
+            const hebrewLetters = extractHebrewLetters(str).join('');
+            return hebrewNetwork.calculatePathGematria(hebrewLetters.split('')) || 0; // Return 0 if calculation fails
+        };
+
         const keywordGematria = calculateStringGematria(keyword, hebrewNetwork); // Calculate keyword Gematria
 
         // Calculate frequency of occurrences for each skip
@@ -373,11 +681,12 @@ export const useAstrianSystem = () => {
         });
 
         const clusteringDistance = 100; // Define a clustering distance threshold
+        const highFrequencyThreshold = 3; // Define a threshold for high frequency
 
         results.forEach(result => {
             result.indices.forEach((sequence, currentIndex) => {
                 const significanceReasons: string[] = [];
-                const sequenceGematria = calculateStringGematria(sequence.map(index => hebrewNetwork.getLetterByValue(index as any)?.letter || '').join(''), hebrewNetwork); // Calculate sequence Gematria
+                const sequenceGematria = calculateStringGematriaHelper(sequence.map(index => text[index] || '').join('')); // Calculate sequence Gematria from original text indices
 
                 // Numerical Significance Checks
                 // Check if skip number matches keyword Gematria
@@ -390,22 +699,275 @@ export const useAstrianSystem = () => {
                 }
 
                 // Frequency Check
-                if ((skipFrequencies.get(result.skip) || 0) > 1) { // Check if frequency is greater than 1
+                const currentSkipFrequency = skipFrequencies.get(result.skip) || 0;
+                if (currentSkipFrequency > 1) { // Check if frequency is greater than 1 (basic check)
                     significanceReasons.push("Skip has multiple occurrences");
+                }
+                if (currentSkipFrequency >= highFrequencyThreshold) { // Check for high frequency
+                    significanceReasons.push("High Skip Frequency");
                 }
 
                 // Clustering Check
-                const isClustered = result.indices.some((otherSequence, otherIndex) => {
-                    return currentIndex !== otherIndex && Math.abs(sequence[0] - otherSequence[0]) < clusteringDistance;
+                const isClustered = result.indices.some((otherSequence, otherIndex) => { // Indices are relative to original text
+                    if (currentIndex === otherIndex) return false; // Don't compare to self
+                    // Ensure both sequences have at least one index
+                    if (sequence.length === 0 || otherSequence.length === 0) return false;
+                    // Compare the starting indices in the original text
+                    return Math.abs(sequence[0] - otherSequence[0]) < clusteringDistance;
                 });
                 if (isClustered) significanceReasons.push("Sequence is clustered");
 
+                // Hebrew Willow Tenets Integration
 
-        // TODO: Implement more sophisticated significance criteria here
-        // For now, we'll just check if the skip or sequence Gematria matches the keyword Gematria.
+                // ELS Letters and Island Membership
+                const sequenceLetters = sequence.map(index => text[index] || '').filter(char => cleanText(char) !== ''); // Get Hebrew letters from original text
+                const primaryChainLetters = hebrewNetwork.getIslandLetters('Primary Chain'); // Assuming this method exists
+                const isolatedLetters = hebrewNetwork.getIslandLetters('Isolated Letters'); // Assuming this method exists
+                const islandNames = ['Primary Chain', 'Isolated Letters']; // Add other island names as needed
 
+                islandNames.forEach(islandName => {
+                    const islandLetters = hebrewNetwork.getIslandLetters(islandName);
+                    if (islandLetters) {
+                        const lettersInIsland = sequenceLetters.filter(char => islandLetters.includes(cleanText(char).toUpperCase())); // Compare cleaned and upper case
+                        if (lettersInIsland.length > 0 && lettersInIsland.length === sequenceLetters.length && sequenceLetters.length > 0) { // All letters are from this island
+                            significanceReasons.push(`Letters primarily from ${islandName} island`);
+                        } else if (lettersInIsland.length >= Math.ceil(sequenceLetters.length / 2) && sequenceLetters.length > 0) { // Majority of letters from this island
+                             significanceReasons.push(`Majority of letters from ${islandName} island`);
+                        }
+                    }
+                });
+
+                // Skip Gematria vs. Island Gematria
+                const skipGematria = calculateNumberGematria(result.skip);
+                islandNames.forEach(islandName => {
+                    const islandGematria = hebrewNetwork.calculateIslandGematria(islandName); // Assuming this method exists
+                    if (islandGematria !== null && skipGematria === islandGematria) {
+                        significanceReasons.push(`Skip Gematria matches ${islandName} island Gematria`);
+                    }
+                });
+
+                // ELS Letters and Loop/Hub Membership
+                const loopLetters = ['א', 'פ', 'מ', 'ו']; // Aleph, Pey, Mem, Vav
+                const hubLetter = 'י'; // Yud
+                const containsLoopLetter = sequenceLetters.some(char => loopLetters.includes(cleanText(char).toUpperCase()));
+                const containsHubLetter = sequenceLetters.some(char => hubLetter === cleanText(char).toUpperCase());
+
+                if (containsLoopLetter) {
+                    significanceReasons.push("Contains Loop letter(s)");
+                }
+                if (containsHubLetter) {
+                    significanceReasons.push("Contains Hub letter (Yud)");
+                }
+
+                // Skip Gematria vs. Loop/Hub Gematria
+                const loopLettersGematria = calculateStringGematriaHelper(loopLetters.join(''));
+                const yudGematria = calculateStringGematriaHelper(hubLetter);
+
+                if (skipGematria !== 0 && loopLettersGematria !== 0 && skipGematria === loopLettersGematria) {
+                    significanceReasons.push("Skip Gematria matches Loop Letters Gematria");
+                }
+                 if (skipGematria !== 0 && yudGematria !== 0 && skipGematria === yudGematria) {
+                    significanceReasons.push("Skip Gematria matches Yud Gematria");
+                }
+
+                // ELS Sequence Gematria vs. Tier Gematria
+                for (const tierNumber in tierGematriaValues) {
+                    if (tierGematriaValues.hasOwnProperty(tierNumber)) {
+                        const tierGematria = tierGematriaValues[tierNumber as any as number]; // Cast to number
+                        if (sequenceGematria === tierGematria) {
+                            significanceReasons.push(`Sequence Gematria matches Tier ${tierNumber} Gematria`);
+                        }
+                    }
+                }
+
+                // Check for Meaningful Phrases - Pass the full text
+                const phraseReasons = checkForMeaningfulPhrases(sequence, text);
+                if (phraseReasons.length > 0) {
+                    significanceReasons.push(...phraseReasons); // Add all reasons from the array
+                }
+
+                if (significanceReasons.length > 0) {
+                     // Use a simple unique key to prevent adding the exact same finding multiple times
+                     // if it matches multiple criteria in the same iteration loop.
+                     // A more robust de-duplication might be needed if findings are identical across skips/directions.
+                     const findingKey = `${result.skip}-${sequence.join(',')}`;
+                     // Check if this exact finding (by skip and indices) has already been added to significantFindings
+                     // This is a basic check, a more thorough check might be needed if the order of indices varies but represents the same finding.
+                     const alreadyExists = significantFindings.some(sf => sf.skip === result.skip && JSON.stringify(sf.indices[0]) === JSON.stringify(sequence));
+
+                     if (!alreadyExists) {
+                          significantFindings.push({ skip: result.skip, indices: [sequence], significance: significanceReasons });
+                     } else {
+                         // Optional: If it already exists, you might want to merge significance reasons
+                         // For now, we just skip adding a duplicate entry.
+                         // console.log(`Skipping duplicate significant finding for skip ${result.skip}, indices ${JSON.stringify(sequence)}`);
+                     }
+                }
+            });
+        }
+
+        return reasons; // Return array of reasons
+    }, [cleanText]);
+
+    // Helper function to calculate Gematria of a number (simple mapping for now)
+    // A more sophisticated mapping based on The Astrian Key's principles
+    // could be developed here.
+    const calculateNumberGematria = useCallback((num: number): number => {
+        // As a basic placeholder, we can convert the number to its Hebrew word
+        // and then calculate the Gematria of the word. This is highly simplified.
+        // A proper implementation would require a system for mapping numbers to
+        // Hebrew concepts/letters within the Astrian Key framework.
+        // For now, let's just return the number itself as a 'Gematria value'
+        // for comparison purposes in this basic implementation.
+        // This is a very basic example. You might need a more sophisticated mapping
+        // based on how numbers relate to the Hebrew Alphabet Network's structure.
+        // For now, we'll just use the number itself.
+        return num;
+    }, []);
+
+    // Function to identify significant ELS findings
+    const identifySignificantElsFindings = useCallback((results: { skip: number, indices: number[][] }[], keyword: string, text: string): { skip: number, indices: number[][], significance: string[] }[] => { // Added text parameter
+        const significantFindings: { skip: number, indices: number[][], significance: string[] }[] = []; // Keep track of significant findings
+        const encounteredFindings = new Set<string>(); // To avoid duplicate significant entries if multiple criteria match
+
+        // Define tier Gematria values
+        const tierGematriaValues: { [key: number]: number } = {
+            1: 547, // Tier 1: Keter - Malkhut
+            2: 500, // Tier 2: Chokhmah - Yesod
+            3: 287, // Tier 3: Binah - Hod
+            4: 81,  // Tier 4: Chesed - Netzach
+            5: 80   // Tier 5: Gevurah - Tiferet
+            // Add more tiers if defined
+        };
+
+        // Helper to calculate Gematria of a string
+        const calculateStringGematriaHelper = (str: string): number => {
+            // Ensure the string contains only Hebrew letters before calculation
+            const hebrewLetters = extractHebrewLetters(str).join('');
+            return hebrewNetwork.calculatePathGematria(hebrewLetters.split('')) || 0; // Return 0 if calculation fails
+        };
+
+        const keywordGematria = calculateStringGematria(keyword, hebrewNetwork); // Calculate keyword Gematria
+
+        // Calculate frequency of occurrences for each skip
+        const skipFrequencies = new Map<number, number>();
+        results.forEach(result => {
+            skipFrequencies.set(result.skip, result.indices.length);
+        });
+
+        const clusteringDistance = 100; // Define a clustering distance threshold
+        const highFrequencyThreshold = 3; // Define a threshold for high frequency
+
+        results.forEach(result => {
+            result.indices.forEach((sequence, currentIndex) => {
+                const significanceReasons: string[] = [];
+                const sequenceGematria = calculateStringGematriaHelper(sequence.map(index => text[index] || '').join('')); // Calculate sequence Gematria from original text indices
+
+                // Numerical Significance Checks
+                // Check if skip number matches keyword Gematria
+                if (result.skip !== 0 && result.skip === keywordGematria) {
+                    significanceReasons.push("Skip matches keyword Gematria");
+                }
+                // Check if sequence Gematria matches keyword Gematria
+                if (sequenceGematria === keywordGematria) {
+                    significanceReasons.push("Sequence Gematria matches keyword Gematria");
+                }
+
+                // Frequency Check
+                const currentSkipFrequency = skipFrequencies.get(result.skip) || 0;
+                if (currentSkipFrequency > 1) { // Check if frequency is greater than 1 (basic check)
+                    significanceReasons.push("Skip has multiple occurrences");
+                }
+                if (currentSkipFrequency >= highFrequencyThreshold) { // Check for high frequency
+                    significanceReasons.push("High Skip Frequency");
+                }
+
+                // Clustering Check
+                const isClustered = result.indices.some((otherSequence, otherIndex) => { // Indices are relative to original text
+                    if (currentIndex === otherIndex) return false; // Don't compare to self
+                    // Ensure both sequences have at least one index
+                    if (sequence.length === 0 || otherSequence.length === 0) return false;
+                    // Compare the starting indices in the original text
+                    return Math.abs(sequence[0] - otherSequence[0]) < clusteringDistance;
+                });
+                if (isClustered) significanceReasons.push("Sequence is clustered");
+
+                // Hebrew Willow Tenets Integration
+
+                // ELS Letters and Island Membership
+                const sequenceLetters = sequence.map(index => text[index] || '').filter(char => cleanText(char) !== ''); // Get Hebrew letters from original text
+                const primaryChainLetters = hebrewNetwork.getIslandLetters('Primary Chain');
+                const isolatedLetters = hebrewNetwork.getIslandLetters('Isolated Letters');
+                const islandNames = ['Primary Chain', 'Isolated Letters']; // Add other island names as needed
+
+                islandNames.forEach(islandName => {
+                    const islandLetters = hebrewNetwork.getIslandLetters(islandName);
+                    if (islandLetters) {
+                        const lettersInIsland = sequenceLetters.filter(char => islandLetters.includes(cleanText(char).toUpperCase())); // Compare cleaned and upper case
+                        if (lettersInIsland.length > 0 && lettersInIsland.length === sequenceLetters.length && sequenceLetters.length > 0) { // All letters are from this island
+                            significanceReasons.push(`Letters primarily from ${islandName} island`);
+                        } else if (lettersInIsland.length >= Math.ceil(sequenceLetters.length / 2) && sequenceLetters.length > 0) { // Majority of letters from this island
+                             significanceReasons.push(`Majority of letters from ${islandName} island`);
+                        }
+                    }
+                });
+
+                // Skip Gematria vs. Island Gematria
+                const skipGematria = calculateNumberGematria(result.skip);
+                islandNames.forEach(islandName => {
+                    const islandGematria = hebrewNetwork.calculateIslandGematria(islandName);
+                    if (islandGematria !== null && skipGematria === islandGematria) {
+                        significanceReasons.push(`Skip Gematria matches ${islandName} island Gematria`);
+                    }
+                });
+
+                // ELS Letters and Loop/Hub Membership
+                const loopLetters = ['א', 'פ', 'מ', 'ו']; // Aleph, Pey, Mem, Vav
+                const hubLetter = 'י'; // Yud
+                const containsLoopLetter = sequenceLetters.some(char => loopLetters.includes(cleanText(char).toUpperCase()));
+                const containsHubLetter = sequenceLetters.some(char => hubLetter === cleanText(char).toUpperCase());
+
+                if (containsLoopLetter) {
+                    significanceReasons.push("Contains Loop letter(s)");
+                }
+                if (containsHubLetter) {
+                    significanceReasons.push("Contains Hub letter (Yud)");
+                }
+
+                // Skip Gematria vs. Loop/Hub Gematria
+                const loopLettersGematria = calculateStringGematriaHelper(loopLetters.join(''));
+                const yudGematria = calculateStringGematriaHelper(hubLetter);
+
+                if (skipGematria !== 0 && loopLettersGematria !== 0 && skipGematria === loopLettersGematria) {
+                    significanceReasons.push("Skip Gematria matches Loop Letters Gematria");
+                }
+                 if (skipGematria !== 0 && yudGematria !== 0 && skipGematria === yudGematria) {
+                    significanceReasons.push("Skip Gematria matches Yud Gematria");
+                }
+
+                // ELS Sequence Gematria vs. Tier Gematria
+                for (const tierNumber in tierGematriaValues) {
+                    if (tierGematriaValues.hasOwnProperty(tierNumber)) {
+                        const tierGematria = tierGematriaValues[tierNumber as any as number]; // Cast to number
+                        if (sequenceGematria === tierGematria) {
+                            significanceReasons.push(`Sequence Gematria matches Tier ${tierNumber} Gematria`);
+                        }
+                    }
+                }
+
+                // Check for Meaningful Phrases
+                const phraseReasons = checkForMeaningfulPhrases(sequence, text);
+                if (phraseReasons.length > 0) {
+                    significanceReasons.push(...phraseReasons); // Add all reasons from the array
+                }
+
+                if (significanceReasons.length > 0) {
+                    significantFindings.push({ skip: result.skip, indices: [sequence], significance: significanceReasons });
+                }
+            });
+        });
         return significantFindings; // Return identified significant findings
-    }, [calculateStringGematria]); // Dependency on calculateStringGematria
+    }, [calculateStringGematria, extractHebrewLetters, hebrewNetwork, cleanText, calculateNumberGematria]); // Added dependencies
 
     // Omnipresent ELS Search Function - Indices are relative to the original text
     const performOmnipresentElsSearch = useCallback((text: string, keyword: string): { skip: number, indices: number[][] }[] => {
@@ -437,7 +999,7 @@ export const useAstrianSystem = () => {
     }, [cleanText, performElsSearchWithSkipAndDirection]); // Dependency on cleanText and performElsSearchWithSkipAndDirection
 
     // Helper function to extract only Hebrew letters
-    const extractHebrewLetters = useCallback((text: string): string[] => { // Keep this function
+    const extractHebrewLetters = useCallback((text: string): string[] => {
         const hebrewLetters = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט', 'י', 'כ', 'ל', 'מ', 'נ', 'ס', 'ע', 'פ', 'צ', 'ק', 'ר', 'ש', 'ת', 'ך', 'ם', 'ן', 'ף', 'ץ'];
         return text.split('').filter(char => hebrewLetters.includes(char));
     }, []);
@@ -477,7 +1039,7 @@ export const useAstrianSystem = () => {
         const omnipresentElsResults = performOmnipresentElsSearch(relevantText, elsKeyword);
 
         // Identify Significant ELS Findings - Pass keyword to the function
-        const significantFindings = identifySignificantElsFindings(omnipresentElsResults, elsKeyword);
+        const significantFindings = identifySignificantElsFindings(omnipresentElsResults, elsKeyword, relevantText); // Pass relevantText
 
         // Construct the analysis message
         let analysisMessage = `Analysis for ${book} ${chapter}:${verse}:\n\n`;
@@ -486,7 +1048,7 @@ export const useAstrianSystem = () => {
         if (significantFindings.length > 0) {
             analysisMessage += `Significant ELS sequence(s) found for "${elsKeyword}":\n`;
             significantFindings.forEach(finding => {
-                // Display the indices of the first sequence for simplicity in the summary
+                // Display the indices of the first sequence found for this skip
                 analysisMessage += `- Skip ${finding.skip}: Occurrences: ${finding.indices.length}, Indices: ${JSON.stringify(finding.indices[0])} (Significance: ${finding.significance.join(', ')})\n`;
             });
         } else if (omnipresentElsResults.length > 0) {
@@ -496,7 +1058,7 @@ export const useAstrianSystem = () => {
          else {
             analysisMessage += `No ELS sequences found for "${elsKeyword}" in this selection.`;
         }
-        
+
         // TODO: Integrate deeper ATC analysis here
         // This could include:
         // - More targeted verse extraction
@@ -507,7 +1069,7 @@ export const useAstrianSystem = () => {
         addMessage({ type: 'ai', text: analysisMessage, analysisType: 'atc' });
 
         setIsLoading(false); // Stop loading after the analysis message is sent
-    }, [addMessage, extractHebrewLetters, hebrewNetwork, performOmnipresentElsSearch, identifySignificantElsFindings]); // Added identifySignificantElsFindings to dependencies
+    }, [addMessage, extractHebrewLetters, hebrewNetwork, performOmnipresentElsSearch, identifySignificantElsFindings]);
 
     const handleHebraicQuery = useCallback(async (data: TextualCartographerFormData) => { // Keep existing handleHebraicQuery for ATC form
         const { corpus, book, chapter, verse } = data;
@@ -654,7 +1216,7 @@ export const useAstrianSystem = () => {
     const handleRetry = useCallback(() => {
         if (lastQueryRef.current) {
             const { prompt, analysisType } = lastQueryRef.current;
-            addMessage({ type: 'system', text: `Retrying last analysis: ${analysisType}` });
+            addMessage({ type: 'system', text: `Retrying last analysis: ${analysisType || 'chat'}` }); // Added default for analysisType
             if(prompt) handleSendMessage(prompt);
         }
     }, [addMessage]);
