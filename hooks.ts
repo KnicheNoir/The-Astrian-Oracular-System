@@ -365,7 +365,6 @@ export const useAstrianSystem = () => {
         return originalIndices; // These are indices relative to the original text string
     }, [cleanText]); // Dependency on cleanText
 
-    // Helper function to check if an ELS sequence forms a meaningful phrase
     const checkForMeaningfulPhrases = useCallback((indices: number[], text: string): string[] => {
         const sequenceLetters = indices.map(index => text[index] || '').join(''); // Use original letters for phrase matching
         const reasons: string[] = []; // Initialize as empty array
@@ -634,7 +633,6 @@ export const useAstrianSystem = () => {
         return reasons; // Return array of reasons
     }, [cleanText, extractHebrewLetters]); // Added extractHebrewLetters to dependencies
 
-    // Helper function to calculate Gematria of a number (simple mapping for now)
     // A more sophisticated mapping based on The Astrian Key's principles
     // could be developed here.
     const calculateNumberGematria = useCallback((num: number): number => {
@@ -823,13 +821,311 @@ export const useAstrianSystem = () => {
         // based on how numbers relate to the Hebrew Alphabet Network's structure.
         // For now, we'll just use the number itself.
         return num;
+ }, []);
+    const checkOverlapOrProximity = useCallback((indices1: number[], indices2: number[], proximityThreshold: number): boolean => { if (indices1.length === 0 || indices2.length === 0) return false;
+
+        // Sort indices to simplify overlap/proximity checks
+        const sortedIndices1 = [...indices1].sort((a, b) => a - b);
+        const sortedIndices2 = [...indices2].sort((a, b) => a - b);
+
+        // Check for overlap (any common index)
+        const overlap = sortedIndices1.some(index1 => sortedIndices2.includes(index1));
+        if (overlap) return true;
+
+        // Check for proximity (start/end indices within threshold)
+        const start1 = sortedIndices1[0];
+        const end1 = sortedIndices1[sortedIndices1.length - 1];
+        const start2 = sortedIndices2[0];
+        const end2 = sortedIndices2[sortedIndices2.length - 1];
+
+        const proximity = (
+            Math.abs(start1 - start2) <= proximityThreshold ||
+            Math.abs(start1 - end2) <= proximityThreshold ||
+            Math.abs(end1 - start2) <= proximityThreshold ||
+            Math.abs(end1 - end2) <= proximityThreshold
+        );
+
+        return proximity;
     }, []);
+
+ // Helper to extract only Hebrew letters
+    const extractHebrewLetters = useCallback((text: string): string[] => {
+        const hebrewLetters = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט', 'י', 'כ', 'ל', 'מ', 'נ', 'ס', 'ע', 'פ', 'צ', 'ק', 'ר', 'ש', 'ת', 'ך', 'ם', 'ן', 'ף', 'ץ'];
+        return text.split('').filter(char => hebrewLetters.includes(char));
+    }, []);
+
+ // Basic transliteration from English name to Hebrew letters (very simplified)
+ // A more robust transliteration is needed for full functionality.
+    const transliterateNameToHebrew = useCallback((name: string): string => {
+        const transliterationMap: { [key: string]: string } = {
+            'a': 'א', 'b': 'ב', 'c': 'כ', 'd': 'ד', 'e': 'א', 'f': 'פ', 'g': 'ג', 'h': 'ה', 'i': 'י', 'j': 'י', 'k': 'כ', 'l': 'ל', 'm': 'מ', 'n': 'נ', 'o': 'ו', 'p': 'פ', 'q': 'ק', 'r': 'ר', 's': 'ס', 't': 'ת', 'u': 'ו', 'v': 'ב', 'w': 'ו', 'x': 'כס', 'y': 'י', 'z': 'ז',
+            // Add common letter combinations and finals if needed
+        };
+        let hebrewName = '';
+        const cleanedName = name.toLowerCase().replace(/[^a-z]/g, '');
+        for (const char of cleanedName) {
+            hebrewName += transliterationMap[char] || '';
+        }
+        return hebrewName;
+    }, []);
+
+ // Function to check for correlations with external events
+    const checkForExternalEventCorrelations = useCallback((significantFindings: { skip: number, indices: number[][], significance: string[] }[], text: string): { skip: number, indices: number[][], significance: string[] }[] => {
+        const updatedSignificantFindings = [...significantFindings]; // Create a copy to avoid modifying the original array directly
+
+        // Define a hardcoded array of example external events
+        // Add 'date' field to externalEvents with 'YYYY-MM-DD' format
+        const externalEvents = [
+            { name: 'Challenger Disaster', date: '1986-01-28', keywords: ['צ\'לנג\'ר', 'אסון'] }, // Challenger, Disaster
+            { name: 'Apollo 11', date: '1969-07-20', keywords: ['אפולו', 'ירח', 'נחיתה'] }, // Apollo, Moon, Landing
+            { name: 'World Trade Center', date: '2001-09-11', keywords: ['מגדלי', 'תאומים', 'ספטמבר'] }, // Towers, Twins, September
+            // Added a date for COVID-19
+            { name: 'COVID-19 Pandemic', date: '2020-03-11', keywords: ['מגפה', 'קורונה', 'וירוס'] }, // Pandemic, Corona, Virus (WHO declared pandemic date)
+        ];
+
+        const proximityThreshold = 50; // Define a proximity threshold for indices
+        const searchSkipRange = 500; // Define a range of skips to check for external event keywords
+
+        // Helper to calculate Gematria of a string (uses the one from identifySignificantElsFindings)
+        const calculateStringGematriaHelper = (str: string): number => {
+            // Ensure the string contains only Hebrew letters before calculation
+            const hebrewLetters = extractHebrewLetters(str).join('');
+            return hebrewNetwork.calculatePathGematria(hebrewLetters.split('')) || 0; // Return 0 if calculation fails
+        };
+
+        const convergentEventNames: string[] = [];
+
+        externalEvents.forEach(event => {
+            const eventFindings: { name: number[][], date: number[][], keywords: number[][][] } = {
+                name: [],
+                date: [],
+                keywords: []
+            };
+
+            // Perform ELS Search for Name
+            const eventNameHebrew = transliterateNameToHebrew(event.name);
+            if (eventNameHebrew.length > 0) {
+                // Search for the name with a reasonable range of skips
+                for (let skip = 1; skip <= searchSkipRange; skip++) {
+                    const nameElsForward = performElsSearchWithSkipAndDirection(text, eventNameHebrew, skip, 'forward');
+                    const nameElsBackward = performElsSearchWithSkipAndDirection(text, eventNameHebrew, skip, 'backward');
+                    eventFindings.name.push(...nameElsForward, ...nameElsBackward);
+                }
+            }
+
+            // Perform ELS Search for Date
+            if (event.date) {
+                const [year, month, day] = event.date.split('-').map(Number);
+                const dateStringForSearch = `${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}`;
+                if (dateStringForSearch.length > 0) {
+                     for (let skip = 1; skip <= searchSkipRange; skip++) {
+                        const dateElsForward = performElsSearchWithSkipAndDirection(text, dateStringForSearch, skip, 'forward');
+                        const dateElsBackward = performElsSearchWithSkipAndDirection(text, dateStringForSearch, skip, 'backward');
+                        eventFindings.date.push(...dateElsForward, ...dateElsBackward);
+                     }
+                }
+            }
+
+            // Perform ELS Search for Keywords
+            event.keywords.forEach(keyword => {
+                const keywordFindingsForSkipRange: number[][] = [];
+                for (let skip = 1; skip <= searchSkipRange; skip++) {
+                     const keywordElsForward = performElsSearchWithSkipAndDirection(text, keyword, skip, 'forward');
+                     const keywordElsBackward = performElsSearchWithSkipAndDirection(text, keyword, skip, 'backward');
+                     keywordFindingsForSkipRange.push(...keywordElsForward, ...keywordElsBackward);
+                }
+                if (keywordFindingsForSkipRange.length > 0) {
+                    eventFindings.keywords.push(keywordFindingsForSkipRange); // Store as an array of arrays
+                }
+            });
+
+            // Check for Convergence within the event's findings
+            let hasConvergence = false;
+            const allEventSequences: { type: 'name' | 'date' | 'keyword', indices: number[] }[] = [];
+
+            eventFindings.name.forEach(indices => allEventSequences.push({ type: 'name', indices }));
+            eventFindings.date.forEach(indices => allEventSequences.push({ type: 'date', indices }));
+            eventFindings.keywords.flat().forEach(indices => allEventSequences.push({ type: 'keyword', indices }));
+
+            // Check pairs of findings for proximity
+            for (let i = 0; i < allEventSequences.length; i++) {
+                for (let j = i + 1; j < allEventSequences.length; j++) {
+                    const finding1 = allEventSequences[i];
+                    const finding2 = allEventSequences[j];
+
+                    // Ensure they are of different types to constitute convergence
+                    if (finding1.type !== finding2.type && checkOverlapOrProximity(finding1.indices, finding2.indices, proximityThreshold)) {
+                         hasConvergence = true;
+                         break; // Found convergence for this event
+                    }
+                }
+                if (hasConvergence) break; // Found convergence for this event
+            }
+
+            if (hasConvergence) {
+                convergentEventNames.push(event.name);
+            }
+        });
+
+        // Now, iterate through the user's significant findings and add correlation reasons
+        updatedSignificantFindings.forEach(finding => {
+            externalEvents.forEach(event => {
+                 // Check if this finding overlaps/is in proximity with any finding from a convergent event
+                if (convergentEventNames.includes(event.name)) {
+                     // Need to re-perform ELS searches for this specific event's findings
+                     // to check against the *current* finding.
+                    let correlatesWithConvergentEvent = false;
+
+                     // Check Name correlation with current finding
+                    const eventNameHebrew = transliterateNameToHebrew(event.name);
+                    if (eventNameHebrew.length > 0) {
+                        const nameEls = performElsSearchWithSkipAndDirection(text, eventNameHebrew, finding.skip, 'forward');
+                         const nameElsBackward = performElsSearchWithSkipAndDirection(text, eventNameHebrew, finding.skip, 'backward');
+                         const allNameEls = [...nameEls, ...nameElsBackward];
+                         if (allNameEls.some(nameSequenceIndices => finding.indices.some(findingSequenceIndices => checkOverlapOrProximity(findingSequenceIndices, nameSequenceIndices, proximityThreshold)))) {
+                             correlatesWithConvergentEvent = true;
+                         }
+                    }
+
+                     // Check Date correlation with current finding
+                    if (!correlatesWithConvergentEvent && event.date) {
+                         const [year, month, day] = event.date.split('-').map(Number);
+                         const dateStringForSearch = `${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}`;
+                         if (dateStringForSearch.length > 0) {
+                             const dateEls = performElsSearchWithSkipAndDirection(text, dateStringForSearch, finding.skip, 'forward');
+                             const dateElsBackward = performElsSearchWithSkipAndDirection(text, dateStringForSearch, finding.skip, 'backward');
+                             const allDateEls = [...dateEls, ...dateElsBackward];
+                             if (allDateEls.some(dateSequenceIndices => finding.indices.some(findingSequenceIndices => checkOverlapOrProximity(findingSequenceIndices, dateSequenceIndices, proximityThreshold)))) {
+                                 correlatesWithConvergentEvent = true;
+                             }
+                         }
+                    }
+
+                     // Check Keyword correlation with current finding
+                    if (!correlatesWithConvergentEvent && event.keywords.length > 0) {
+                         for (const keyword of event.keywords) {
+                             const keywordEls = performElsSearchWithSkipAndDirection(text, keyword, finding.skip, 'forward');
+                             const keywordElsBackward = performElsSearchWithSkipAndDirection(text, keyword, finding.skip, 'backward');
+                             const allKeywordEls = [...keywordEls, ...keywordElsBackward];
+                             if (allKeywordEls.some(keywordSequenceIndices => finding.indices.some(findingSequenceIndices => checkOverlapOrProximity(findingSequenceIndices, keywordSequenceIndices, proximityThreshold)))) {
+                                 correlatesWithConvergentEvent = true;
+                                 break; // Found a keyword correlation for this event
+                             }
+                         }
+                    }
+
+                     if (correlatesWithConvergentEvent) {
+                        const convergenceReason = `Correlates with convergence for external event: ${event.name}`;
+                        if (!finding.significance.includes(convergenceReason)) {
+                            finding.significance.push(convergenceReason);
+                        }
+                     }
+                } else {
+                    // Add individual correlation reasons if the event itself doesn't show convergence
+                     // This duplicates some checks from the initial refinement, but keeps logic separate for now.
+                    // Name Correlation (already done in the initial refinement, but adding here for clarity if needed)
+                     const eventNameHebrew = transliterateNameToHebrew(event.name);
+                     if (eventNameHebrew.length > 0) {
+                         const nameElsResults = performElsSearchWithSkipAndDirection(text, eventNameHebrew, finding.skip, 'forward');
+                         const nameElsResultsBackward = performElsSearchWithSkipAndDirection(text, eventNameHebrew, finding.skip, 'backward');
+                         const allNameEls = [...nameElsResults, ...nameElsResultsBackward];
+                         allNameEls.forEach(nameSequenceIndices => {
+                             finding.indices.forEach(findingSequenceIndices => {
+                                 if (checkOverlapOrProximity(findingSequenceIndices, nameSequenceIndices, proximityThreshold)) {
+                                     const correlationReason = `Name correlation with external event: ${event.name}`;
+                                     if (!finding.significance.includes(correlationReason)) {
+                                         finding.significance.push(correlationReason);
+                                     }
+                                 }
+                             });
+                         });
+                     }
+
+                     // Date Correlation (already done)
+                    if (event.date) {
+                         const [year, month, day] = event.date.split('-').map(Number);
+                         const dateStringForSearch = `${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}`;
+                         if (dateStringForSearch.length > 0) {
+                             const dateElsResults = performElsSearchWithSkipAndDirection(text, dateStringForSearch, finding.skip, 'forward');
+                             const dateElsResultsBackward = performElsSearchWithSkipAndDirection(text, dateStringForSearch, finding.skip, 'backward');
+                             const allDateEls = [...dateElsResults, ...dateElsResultsBackward];
+
+                             allDateEls.forEach(dateSequenceIndices => {
+                                 finding.indices.forEach(findingSequenceIndices => {
+                                     if (checkOverlapOrProximity(findingSequenceIndices, dateSequenceIndices, proximityThreshold)) {
+                                         const correlationReason = `Date correlation with external event: ${event.name}`;
+                                         if (!finding.significance.includes(correlationReason)) {
+                                             finding.significance.push(correlationReason);
+                                         }
+                                     }
+                                 });
+                             });
+                         }
+                     }
+
+                     // Numerical Correlation (Gematria vs Date components - already done)
+                    if (event.date) {
+                         const [year, month, day] = event.date.split('-').map(Number);
+                         const findingGematria = calculateStringGematriaHelper(finding.indices[0].map(index => text[index] || '').join(''));
+                         if (findingGematria > 0) {
+                             if (findingGematria === year) {
+                                 const correlationReason = `Numerical correlation with external event: ${event.name} (Gematria matches Year)`;
+                                if (!finding.significance.includes(correlationReason)) {
+                                    finding.significance.push(correlationReason);
+                                }
+                             }
+                             if (findingGematria === month) {
+                                 const correlationReason = `Numerical correlation with external event: ${event.name} (Gematria matches Month)`;
+                                 if (!finding.significance.includes(correlationReason)) {
+                                     finding.significance.push(correlationReason);
+                                 }
+                             }
+                             if (findingGematria === day) {
+                                 const correlationReason = `Numerical correlation with external event: ${event.name} (Gematria matches Day)`;
+                                 if (!finding.significance.includes(correlationReason)) {
+                                     finding.significance.push(correlationReason);
+                                 }
+                             }
+                             // Check Gematria against the full date as a number (YYYYMMDD)
+                            const fullDateNumber = parseInt(`${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}`, 10);
+                            if (findingGematria === fullDateNumber) {
+                                 const correlationReason = `Numerical correlation with external event: ${event.name} (Gematria matches Full Date)`;
+                                 if (!finding.significance.includes(correlationReason)) {
+                                     finding.significance.push(correlationReason);
+                                 }
+                            }
+                         }
+                    }
+
+                     // Keyword Correlation (already done)
+                    event.keywords.forEach(keyword => {
+                         const externalElsResults = performElsSearchWithSkipAndDirection(text, keyword, finding.skip, 'forward');
+                         const externalElsResultsBackward = performElsSearchWithSkipAndDirection(text, keyword, finding.skip, 'backward');
+                         const allExternalEls = [...externalElsResults, ...externalElsResultsBackward];
+                         allExternalEls.forEach(externalSequenceIndices => {
+                             finding.indices.forEach(findingSequenceIndices => {
+                                 if (checkOverlapOrProximity(findingSequenceIndices, externalSequenceIndices, proximityThreshold)) {
+                                     const correlationReason = `Keyword correlation with external event: ${event.name} (keyword: ${keyword})`;
+                                     if (!finding.significance.includes(correlationReason)) {
+                                         finding.significance.push(correlationReason);
+                                     }
+                                 }
+                             });
+                         });
+                    });
+                }
+            });
+        });
+
+        return updatedSignificantFindings;
+    }, [performElsSearchWithSkipAndDirection, checkOverlapOrProximity, transliterateNameToHebrew, extractHebrewLetters]);
 
     // Function to identify significant ELS findings
     const identifySignificantElsFindings = useCallback((results: { skip: number, indices: number[][] }[], keyword: string, text: string): { skip: number, indices: number[][], significance: string[] }[] => { // Added text parameter
         const significantFindings: { skip: number, indices: number[][], significance: string[] }[] = []; // Keep track of significant findings
         const encounteredFindings = new Set<string>(); // To avoid duplicate significant entries if multiple criteria match
 
+        // Define tier Gematria values
         // Define tier Gematria values
         const tierGematriaValues: { [key: number]: number } = {
             1: 547, // Tier 1: Keter - Malkhut
@@ -840,7 +1136,6 @@ export const useAstrianSystem = () => {
             // Add more tiers if defined
         };
 
-        // Helper to calculate Gematria of a string
         const calculateStringGematriaHelper = (str: string): number => {
             // Ensure the string contains only Hebrew letters before calculation
             const hebrewLetters = extractHebrewLetters(str).join('');
@@ -964,10 +1259,8 @@ export const useAstrianSystem = () => {
                 if (significanceReasons.length > 0) {
                     significantFindings.push({ skip: result.skip, indices: [sequence], significance: significanceReasons });
                 }
-            });
-        });
-        return significantFindings; // Return identified significant findings
-    }, [calculateStringGematria, extractHebrewLetters, hebrewNetwork, cleanText, calculateNumberGematria]); // Added dependencies
+            }); // Removed the duplicate return significantFindings here
+        }); // Removed the duplicate calculateStringGematriaHelper definition
 
     // Omnipresent ELS Search Function - Indices are relative to the original text
     const performOmnipresentElsSearch = useCallback((text: string, keyword: string): { skip: number, indices: number[][] }[] => {
@@ -996,7 +1289,7 @@ export const useAstrianSystem = () => {
             }
         }
         return allFindings; // Indices are relative to the original text string
-    }, [cleanText, performElsSearchWithSkipAndDirection]); // Dependency on cleanText and performElsSearchWithSkipAndDirection
+    }, [cleanText, performElsSearchWithSkipAndDirection]); // Dependency on cleanText and performElsSearchWithSkipAndDirection, removed duplicate function
 
     // Helper function to extract only Hebrew letters
     const extractHebrewLetters = useCallback((text: string): string[] => {
@@ -1038,15 +1331,18 @@ export const useAstrianSystem = () => {
         const elsKeyword = keyword || "יהוה"; // Use provided keyword or default to YHWH
         const omnipresentElsResults = performOmnipresentElsSearch(relevantText, elsKeyword);
 
-        // Identify Significant ELS Findings - Pass keyword to the function
+        // Identify Initial Significant ELS Findings - Pass keyword to the function
         const significantFindings = identifySignificantElsFindings(omnipresentElsResults, elsKeyword, relevantText); // Pass relevantText
 
-        // Construct the analysis message
+        // Check for external event correlations *before* formatting the final message
+        // Check for external event correlations *before* formatting the final message
+        const significantFindingsWithCorrelations = checkForExternalEventCorrelations(significantFindings, relevantText);
+
         let analysisMessage = `Analysis for ${book} ${chapter}:${verse}:\n\n`;
-        analysisMessage += `Combined Gematria Value of Hebrew letters in this selection: ${gematriaValue}.\n\n`;
+        analysisMessage += `Combined Gematria Value of Hebrew letters in this selection: ${gematriaValue}.\n\n`; // This line seems misplaced now, should be before significant findings
 
         if (significantFindings.length > 0) {
-            analysisMessage += `Significant ELS sequence(s) found for "${elsKeyword}":\n`;
+            analysisMessage += `Significant ELS sequence(s) found for "${elsKeyword}" (including external correlations):\n`;
             significantFindings.forEach(finding => {
                 // Display the indices of the first sequence found for this skip
                 analysisMessage += `- Skip ${finding.skip}: Occurrences: ${finding.indices.length}, Indices: ${JSON.stringify(finding.indices[0])} (Significance: ${finding.significance.join(', ')})\n`;
@@ -1066,7 +1362,7 @@ export const useAstrianSystem = () => {
         // - Triggering AI interpretation based on the findings
 
         // Add the analysis result to the chat history
-        addMessage({ type: 'ai', text: analysisMessage, analysisType: 'atc' });
+        addMessage({ type: 'ai', text: analysisMessage, analysisType: 'atc' }); // Use significantFindingsWithCorrelations? The logic is updating the original significantFindings array.
 
         setIsLoading(false); // Stop loading after the analysis message is sent
     }, [addMessage, extractHebrewLetters, hebrewNetwork, performOmnipresentElsSearch, identifySignificantElsFindings]);
