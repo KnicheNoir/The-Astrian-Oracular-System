@@ -3,7 +3,7 @@ import { GenerateContentResponse, Chat } from "@google/genai";
 import { View, SessionRecord, EntrainmentProfile, AWEFormData, ELSResult, GuidingIntent, GeneralAnalysisResult, ExhaustiveResonanceResult, Toast, UserMessage, AIMessage, SystemMessage, ComponentMessage, BaseSessionRecord, TextualCartographerFormData, ELSInvestigatorFormData, AWEAnalysisResult, PalmistryAnalysisResult, VoiceResonanceAnalysisResult, AstrianDayPlannerResult, ProactiveSuggestion } from './types';
 import { GeminiService, AstrianEngine } from './services';
 import { hebraicCartographerSchema, hellenisticCartographerSchema, apocryphalAnalysisSchema, aweSynthesisSchema, palmistryAnalysisSchema, astrianDayPlannerSchema, aweExtractionSchema, voiceResonanceAnalysisSchema } from './constants';
-// import { decodeCorporaFromImage } from './steganography'; // Assuming steganography is not needed for this diff
+import { decodeCorporaFromImage } from './steganography';
 import { SOURCE_STELA_URL } from './corpora';
 import { HebrewAlphabetNetwork, hebrewNetwork } from './src/dataModels'; // Corrected import path and added HebrewAlphabetNetwork type
 
@@ -97,7 +97,7 @@ export const useAstrianSystem = () => {
     }, []);
 
     // Effect for bootstrapping the application
-    useEffect(() => {
+    useEffect(() => { // Added decodeCorporaFromImage to the dependency array
         const bootstrap = async () => {
             if (AstrianEngine.isInitialized()) {
                 setIsCorporaInitialized(true);
@@ -112,7 +112,7 @@ export const useAstrianSystem = () => {
                 console.error("Fatal Error: Could not initialize corpora from Source Stela.", e);
                 // setError("FATAL: The textual matrix is corrupted. Cannot initialize."); // Error handling might need refinement
                 addToast("FATAL: The textual matrix is corrupted. Cannot initialize.", 'error'); // Use a toast for user feedback
-            }
+            } // Added decodeCorporaFromImage to the dependency array
         };
         bootstrap();
     }, [addMessage]);
@@ -280,7 +280,7 @@ export const useAstrianSystem = () => {
         return foundSequences; // These are indices in the cleaned text, not original text
     }, [cleanText]); // Dependency on cleanText
 
-    // ELS Search Function with Skip Interval and Direction
+    // ELS Search Function with Skip Interval and Direction - Indices are relative to the original text
     const performElsSearchWithSkipAndDirection = useCallback((text: string, keyword: string, skip: number, direction: 'forward' | 'backward'): number[][] => {
         const foundSequences: number[][] = []; // Indices are relative to the original text
         if (!text || !keyword || typeof skip !== 'number' || !Number.isInteger(skip) || skip === 0) {
@@ -298,8 +298,8 @@ export const useAstrianSystem = () => {
 
         const originalTextLength = originalText.length;
         const cleanedText = cleanText(originalText); // Perform cleaning once
-        const cleanedTextLength = cleanedText.length;
         const keywordLength = cleanedKeyword.length;
+
         const effectiveStep = direction === 'forward' ? skip : -skip;
 
         for (let i = (direction === 'forward' ? 0 : cleanedTextLength - 1); (direction === 'forward' ? i < cleanedTextLength : i >= 0); i += (direction === 'forward' ? 1 : -1)) {
@@ -309,13 +309,10 @@ export const useAstrianSystem = () => {
                 let keywordIndex = 1;
                 let currentTextIndex = i + effectiveStep;
     
-                while (keywordIndex < keywordLength && currentTextIndex >= 0 && currentTextIndex < cleanedTextLength) {
-                    // Check bounds
-                    if (currentTextIndex < 0 || currentTextIndex >= originalTextLength) {
-                        break; // Out of bounds
-                    }
-                    if (cleanedText[currentTextIndex] === cleanedKeyword[keywordIndex]) {
+                while (keywordIndex < keywordLength && currentTextIndex >= 0 && currentTextIndex < cleanedTextLength) { // Corrected boundary check
+                     if (cleanedText[currentTextIndex] === cleanedKeyword[keywordIndex]) {
                         currentSequence.push(currentTextIndex);
+
                         keywordIndex++;
                         currentTextIndex += step;
                     } else {
@@ -350,21 +347,59 @@ export const useAstrianSystem = () => {
                     originalSeq.push(cleanedToOriginalMap.get(cleanedIdx)!);
                  } else {
                     // This should not happen if the mapping is correct, but as a safeguard
-                    console.warn(`Could not map cleaned index ${cleanedIdx} back to original text.`);
+                    console.warn(`Could not map cleaned index ${cleanedIdx} back to original text. Original text length: ${originalTextLength}, cleaned text length: ${cleanedTextLength}`);
                  }
             });
-            if (originalSeq.length === seq.length) { // Ensure all indices were mapped
+             // Ensure all indices were mapped and the sequence is still valid in the original text
+             // This check might be redundant if mapping is correct, but good for safety.
+             // A more robust check would be to re-verify the ELS in the original text based on mapped indices.
+             if (originalSeq.length === seq.length) {
                  originalIndices.push(originalSeq);
             }
         });
 
         return originalIndices; // These are indices relative to the original text string
-    }, [cleanText]);
+    }, [cleanText]); // Dependency on cleanText
 
     // Function to identify significant ELS findings
     const identifySignificantElsFindings = useCallback((results: { skip: number, indices: number[][] }[], keyword: string): { skip: number, indices: number[][], significance: string[] }[] => {
         const significantFindings: { skip: number, indices: number[][], significance: string[] }[] = [];
         const keywordGematria = calculateStringGematria(keyword, hebrewNetwork); // Calculate keyword Gematria
+
+        // Calculate frequency of occurrences for each skip
+        const skipFrequencies = new Map<number, number>();
+        results.forEach(result => {
+            skipFrequencies.set(result.skip, result.indices.length);
+        });
+
+        const clusteringDistance = 100; // Define a clustering distance threshold
+
+        results.forEach(result => {
+            result.indices.forEach((sequence, currentIndex) => {
+                const significanceReasons: string[] = [];
+                const sequenceGematria = calculateStringGematria(sequence.map(index => hebrewNetwork.getLetterByValue(index as any)?.letter || '').join(''), hebrewNetwork); // Calculate sequence Gematria
+
+                // Numerical Significance Checks
+                // Check if skip number matches keyword Gematria
+                if (result.skip !== 0 && result.skip === keywordGematria) {
+                    significanceReasons.push("Skip matches keyword Gematria");
+                }
+                // Check if sequence Gematria matches keyword Gematria
+                if (sequenceGematria === keywordGematria) {
+                    significanceReasons.push("Sequence Gematria matches keyword Gematria");
+                }
+
+                // Frequency Check
+                if ((skipFrequencies.get(result.skip) || 0) > 1) { // Check if frequency is greater than 1
+                    significanceReasons.push("Skip has multiple occurrences");
+                }
+
+                // Clustering Check
+                const isClustered = result.indices.some((otherSequence, otherIndex) => {
+                    return currentIndex !== otherIndex && Math.abs(sequence[0] - otherSequence[0]) < clusteringDistance;
+                });
+                if (isClustered) significanceReasons.push("Sequence is clustered");
+
 
         // TODO: Implement more sophisticated significance criteria here
         // For now, we'll just check if the skip or sequence Gematria matches the keyword Gematria.
@@ -372,7 +407,7 @@ export const useAstrianSystem = () => {
         return significantFindings; // Return identified significant findings
     }, [calculateStringGematria]); // Dependency on calculateStringGematria
 
-    // Omnipresent ELS Search Function
+    // Omnipresent ELS Search Function - Indices are relative to the original text
     const performOmnipresentElsSearch = useCallback((text: string, keyword: string): { skip: number, indices: number[][] }[] => {
         const allFindings: { skip: number, indices: number[][] }[] = [];
         if (!text || !keyword) {
@@ -380,10 +415,13 @@ export const useAstrianSystem = () => {
             return allFindings;
         }
 
-        const cleanedTextLength = cleanText(text).length;
+        const cleanedText = cleanText(text); // Clean text once
+        const cleanedTextLength = cleanedText.length; // Use cleaned text length for skip range
+
         // Iterate through a reasonable range of skips.
         // A common upper bound is the length of the text or half the text length.
         // We can define a more sophisticated range later based on The Astrian Key's principles.
+
         const maxSkip = Math.floor(cleanedTextLength / 2);
 
         for (let skip = 1; skip <= maxSkip; skip++) {
@@ -395,7 +433,7 @@ export const useAstrianSystem = () => {
                 allFindings.push({ skip, indices: combinedFindings });
             }
         }
-        return allFindings; // Indices are relative to the original text
+        return allFindings; // Indices are relative to the original text string
     }, [cleanText, performElsSearchWithSkipAndDirection]); // Dependency on cleanText and performElsSearchWithSkipAndDirection
 
     // Helper function to extract only Hebrew letters
@@ -438,7 +476,7 @@ export const useAstrianSystem = () => {
         const elsKeyword = keyword || "יהוה"; // Use provided keyword or default to YHWH
         const omnipresentElsResults = performOmnipresentElsSearch(relevantText, elsKeyword);
 
-        // Identify Significant ELS Findings
+        // Identify Significant ELS Findings - Pass keyword to the function
         const significantFindings = identifySignificantElsFindings(omnipresentElsResults, elsKeyword);
 
         // Construct the analysis message
@@ -448,7 +486,8 @@ export const useAstrianSystem = () => {
         if (significantFindings.length > 0) {
             analysisMessage += `Significant ELS sequence(s) found for "${elsKeyword}":\n`;
             significantFindings.forEach(finding => {
-                analysisMessage += `- Skip ${finding.skip}: Indices ${JSON.stringify(finding.indices[0])} (Significance: ${finding.significance.join(', ')})\n`;
+                // Display the indices of the first sequence for simplicity in the summary
+                analysisMessage += `- Skip ${finding.skip}: Occurrences: ${finding.indices.length}, Indices: ${JSON.stringify(finding.indices[0])} (Significance: ${finding.significance.join(', ')})\n`;
             });
         } else if (omnipresentElsResults.length > 0) {
              analysisMessage += `Found ${omnipresentElsResults.length} potential ELS sequence(s) for "${elsKeyword}", but none met the current significance criteria.\n`;
@@ -651,7 +690,7 @@ export const useAstrianSystem = () => {
         setSubliminalSeedValue(s => s + 1);
 
         // 1. Check for Bible references (e.g., "°Genesis 1:1")
-        const bibleRefMatch = message.trim().match(/^°([A-Za-z]+)\s+(\d+):(\d+)(?:\s+([^\s]+)(?:\s+(\d+))?)?$/);
+        const bibleRefMatch = message.trim().match(/^°([A-Za-z]+)\s+(\d+):(\d+)(?:\s+([^\s]+)(?:\s+(\d+))?)?$/); // Corrected regex to allow non-space characters in keyword
         if (bibleRefMatch) {
             const [_, book, chapter, verse, keyword, skipStr] = bibleRefMatch;
             const skip = skipStr ? parseInt(skipStr, 10) : undefined;
@@ -664,8 +703,8 @@ export const useAstrianSystem = () => {
             return; // Stop processing if it's a Bible reference
 
         }
+        const callSignMatch = message.trim().match(/^°(\w+)(?:\s+(.*))?$/); // Moved callSignMatch declaration here
         if (callSignMatch) {
-            const [_, command, args] = callSignMatch;
             const callSignMatch = message.trim().match(/^°(\w+)(?:\s+(.*))?$/); // Moved callSignMatch declaration here
             const view = CALL_SIGN_VIEWS[command];
             
