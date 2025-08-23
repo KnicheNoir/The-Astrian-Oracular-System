@@ -1,0 +1,222 @@
+{
+  "aleph": {
+    "hebrew": "א",
+    "transliteration_key": "aleph",
+    "standard_gematria": 1,
+    "traditional_spelling": ["aleph", "lamed", "pey"],
+    "full_value_gematria": 111,
+    "network_connections": ["pey"],
+    "island": "Aleph-Pey",
+    "color": "lightblue"
+  },
+  "bet": {
+    "hebrew": "ב",
+    "transliteration_key": "bet",
+    "standard_gematria": 2,
+    "traditional_spelling": ["bet", "yud", "tav"],
+    "full_value_gematria": 412,
+    "network_connections": ["yud", "tet"],
+    "island": "Isolated",
+    "color": "pink"
+  },
+  "gimel": {
+    "hebrew": "ג",
+    "transliteration_key": "gimel",
+    "standard_gematria": 3,
+    "traditional_spelling": ["gimel", "mem", "lamed"],
+    "full_value_gematria": 73,
+    "network_connections": ["yud", "mem", "lamed"],
+    "island": "Isolated",
+    "color": "pink"
+  },
+  "dalet": {
+    "hebrew": "ד",
+    "transliteration_key": "dalet",
+    "standard_gematria": 4,
+    "traditional_spelling": ["dalet", "lamed", "tav"],
+    "full_value_gematria": 434,
+    "network_connections": ["lamed", "tav"],
+    "island": "Primary",
+    "color": "orange"
+  },
+  "he": {
+    "hebrew": "ה",
+    "transliteration_key": "he",
+    "standard_gematria": 5,
+    "traditional_spelling": ["he", "aleph"],
+    "full_value_gematria": 6,
+    "network_connections": ["yud"],
+    "island": "Isolated",
+    "color": "pink"
+  },
+  "vav": {
+    "hebrew": "ו",
+    "transliteration_key": "vav",
+    "standard_gematria": 6,
+    "traditional_spelling": ["vav", "vav"],
+    "full_value_gematria": 12,
+    "network_connections": ["vav"],
+    "island": "Primary",
+    "color": "orange"
+  },
+  "zayin": {
+    "hebrew": "ז",
+    "transliteration_key": "zayin",
+    "standard_gematria": 7,
+    "traditional_spelling": ["zayin", "yud", "nun"],
+    "full_value_gematria": 67,
+    "network_connections": ["yud", "nun"],
+    "island": "Primary",
+    "color": "orange"
+  },
+  "het": {
+    "hebrew": "ח",
+    "transliteration_key": "het",
+    "standard_gematria": 8,
+    "traditional_spelling": ["het", "yud", "tav"],
+    "full_value_gematria": 418,
+    "network_connections": [],
+    "island": "Isolated",
+    "color": "pink"
+  },
+  "tet": {
+    "hebrew": "ט",
+    "transliteration_key": "tet",
+    "standard_gematria": 9,
+    "traditional_spelling": ["tet", "yud", "tav"],
+    "full_value_gematria": 419,
+    "network_connections": ["yud", "tet"],
+    "island": "Isolated",
+    "color": "pink"
+  },
+  "yud": {
+    "hebrew": "י",
+    "transliteration_key": "yud",
+    "standard_gematria": 10,
+    "traditional_spelling": ["yud", "vav", "dalet"],
+    "full_value_gematria": 20,
+    "network_connections": ["vav", "dalet"],
+    "island": "Primary",
+    "color": "orange"
+  },
+  "kaf": {
+    "hebrew": "כ",
+    "transliteration_key": "kaf",
+    "standard_gematria": 20,
+    "traditional_spelling": ["kaf", "pey"],
+    "full_value_gematria": 100,
+    "network_connections": [],
+    "island": "Samekh-Kaf",
+    "color": "yellow"
+  },
+  "lamed": {
+    "hebrew": "ל",
+    "transliteration_key": "lamed",
+    "standard_gematria": 30,
+    "traditional_spelling": ["lamed", "mem", "dalet"],
+    "full_value_gematria": 74,
+    "network_connections": ["mem", "dalet"],
+    "island": "Primary",
+    "color": "orange"
+  },
+  "mem": {
+    "hebrew": "מ",
+    "transliteration_key": "mem",
+    "standard_gematria": 40,
+    "traditional_spelling": ["mem", "mem"],
+    "full_value_gematria": 80,
+    "network_connections": ["mem"],
+    "island": "Primary",
+    "color": "orange"
+  },
+  "nun": {
+    "hebrew": "נ",
+    "transliteration_key": "nun",
+    "standard_gematria": 50,
+    "traditional_spelling": ["nun", "vav", "nun"],
+    "full_value_gematria": 106,
+    "network_connections": ["nun"],
+    "island": "Primary",
+    "color": "orange"
+  },
+  "samekh": {
+    "hebrew": "ס",
+    "transliteration_key": "samekh",
+    "standard_gematria": 60,
+    "traditional_spelling": ["samekh", "mem", "kaf"],
+    "full_value_gematria": 120,
+    "network_connections": ["mem", "kaf"],
+    "island": "Samekh-Kaf",
+    "color": "yellow"
+  },
+  "ayin": {
+    "hebrew": "ע",
+    "transliteration_key": "ayin",
+    "standard_gematria": 70,
+    "traditional_spelling": ["ayin", "yud", "nun"],
+    "full_value_gematria": 130,
+    "network_connections": [],
+    "island": "Isolated",
+    "color": "pink"
+  },
+  "pey": {
+    "hebrew": "פ",
+    "transliteration_key": "pey",
+    "standard_gematria": 80,
+    "traditional_spelling": ["pey", "ey"],
+    "full_value_gematria": 81,
+    "network_connections": ["aleph", "pey"],
+    "island": "Aleph-Pey",
+    "color": "lightblue"
+  },
+  "tsade": {
+    "hebrew": "צ",
+    "transliteration_key": "tsade",
+    "standard_gematria": 90,
+    "traditional_spelling": ["tsade", "yud"],
+    "full_value_gematria": 100,
+    "network_connections": [],
+    "island": "Isolated",
+    "color": "pink"
+  },
+  "qof": {
+    "hebrew": "ק",
+    "transliteration_key": "qof",
+    "standard_gematria": 100,
+    "traditional_spelling": ["qof", "vav", "pey"],
+    "full_value_gematria": 186,
+    "network_connections": [],
+    "island": "Isolated",
+    "color": "pink"
+  },
+  "resh": {
+    "hebrew": "ר",
+    "transliteration_key": "resh",
+    "standard_gematria": 200,
+    "traditional_spelling": ["resh"],
+    "full_value_gematria": 200,
+    "network_connections": ["yud", "shin"],
+    "island": "Resh-Shin",
+    "color": "green"
+  },
+  "shin": {
+    "hebrew": "ש",
+    "transliteration_key": "shin",
+    "standard_gematria": 300,
+    "traditional_spelling": ["shin", "yud", "nun"],
+    "full_value_gematria": 360,
+    "network_connections": ["yud", "nun"],
+    "island": "Resh-Shin",
+    "color": "green"
+  },
+  "tav": {
+    "hebrew": "ת",
+    "transliteration_key": "tav",
+    "standard_gematria": 400,
+    "traditional_spelling": ["tav", "vav"],
+    "full_value_gematria": 406,
+    "network_connections": ["vav"],
+    "island": "Primary",
+    "color": "orange"
+  }
+}
